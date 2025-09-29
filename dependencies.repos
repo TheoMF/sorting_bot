@@ -18,4 +18,4 @@ repositories:
   apriltag_ros:
     type: git
     url: https://github.com/christianrauch/apriltag_ros
-    version: v3.3.0
+    version: master
