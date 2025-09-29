@@ -1,0 +1,26 @@
+image_width: 640
+image_height: 480
+camera_name: innomaker_camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [553.82139,   0.     , 335.98084,
+           0.     , 553.69847, 267.77313,
+           0.     ,   0.     ,   1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.417607, 0.156855, -0.001689, -0.001890, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [461.73477,   0.     , 340.23186,   0.     ,
+           0.     , 502.83777, 272.08883,   0.     ,
+           0.     ,   0.     ,   1.     ,   0.     ]
