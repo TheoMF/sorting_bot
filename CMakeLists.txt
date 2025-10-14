@@ -12,12 +12,13 @@ find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-add_executable(sorting src/sorting_bot.cpp)
-ament_target_dependencies(sorting rclcpp std_msgs trajectory_msgs sensor_msgs)
+add_executable(trajectory_publisher src/trajectory_publisher.cpp)
+ament_target_dependencies(trajectory_publisher rclcpp std_msgs trajectory_msgs sensor_msgs tf2_ros)
 
 
 # set(HEADER_FILES include/sorting_bot/motion_planner.hpp)
@@ -30,9 +31,9 @@ target_include_directories(
 target_link_libraries(${PROJECT_NAME} pinocchio::pinocchio)
 ament_export_libraries(${PROJECT_NAME})
 
-target_link_libraries(sorting pinocchio::pinocchio ${PROJECT_NAME})
+target_link_libraries(trajectory_publisher pinocchio::pinocchio ${PROJECT_NAME})
 target_include_directories(
-  sorting
+  trajectory_publisher
   PRIVATE
   include
 )
@@ -52,7 +53,7 @@ install(
 # Install nodes
 install(TARGETS
   ${PROJECT_NAME}
-  sorting
+  trajectory_publisher
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
