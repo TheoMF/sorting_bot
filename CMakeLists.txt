@@ -17,8 +17,16 @@ find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+<<<<<<< HEAD
 add_executable(trajectory_publisher src/trajectory_publisher.cpp)
 ament_target_dependencies(trajectory_publisher rclcpp std_msgs trajectory_msgs sensor_msgs tf2_ros)
+=======
+add_executable(joint_trajectory_publisher src/joint_trajectory_publisher.cpp)
+ament_target_dependencies(joint_trajectory_publisher rclcpp std_msgs trajectory_msgs sensor_msgs tf2_ros)
+
+add_executable(detection_simulator src/detection_simulator.cpp)
+ament_target_dependencies(detection_simulator tf2_ros)
+>>>>>>> 4c9440f (update cmakelists and readme)
 
 
 # set(HEADER_FILES include/sorting_bot/motion_planner.hpp)
@@ -31,9 +39,9 @@ target_include_directories(
 target_link_libraries(${PROJECT_NAME} pinocchio::pinocchio)
 ament_export_libraries(${PROJECT_NAME})
 
-target_link_libraries(trajectory_publisher pinocchio::pinocchio ${PROJECT_NAME})
+target_link_libraries(joint_trajectory_publisher pinocchio::pinocchio ${PROJECT_NAME})
 target_include_directories(
-  trajectory_publisher
+  joint_trajectory_publisher
   PRIVATE
   include
 )
@@ -53,7 +61,8 @@ install(
 # Install nodes
 install(TARGETS
   ${PROJECT_NAME}
-  trajectory_publisher
+  joint_trajectory_publisher
+  detection_simulator
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
