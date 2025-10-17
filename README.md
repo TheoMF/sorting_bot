@@ -1,6 +1,8 @@
 # sorting_bot
 Project to do selective sort with open source robots.
 
+<img width="288" src="SO-101_pick_and_place.gif" />
+
 ## Installation
 
 ```bash
