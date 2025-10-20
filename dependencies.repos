@@ -2,20 +2,20 @@
 repositories:
   SO-100-arm:
     type: git
-    url: https://github.com/TheoMF/SO-100-arm
+    url: git@github.com:TheoMF/SO-100-arm
     version: topic/tmartinez/port
 
   so_arm_100_hardware:
     type: git
-    url: https://github.com/TheoMF/so_arm_100_hardware
+    url: git@github.com:TheoMF/so_arm_100_hardware
     version: topic/tmartinez/port
 
   apriltag:
     type: git
-    url: https://github.com/AprilRobotics/apriltag
+    url: git@github.com:AprilRobotics/apriltag
     version: v3.4.5
 
   apriltag_ros:
     type: git
-    url: https://github.com/christianrauch/apriltag_ros
+    url: git@github.com:christianrauch/apriltag_ros
     version: master

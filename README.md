@@ -12,14 +12,22 @@ vcs import --shallow --recursive src < src/sorting_bot/dependencies.repos
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 source install/setup.bash
-ros2 run usb_cam usb_cam_node_exe --ros-args --params-file /home/tmartinez/ros2_ws/src/sorting_bot/config/param_camera.yaml
 ```
 
-## Experiment
+## Launch
+
+### Simulation
+Simulation is launched with commands
+```bash
+ros2 launch so_100_arm gazebo.launch.py
+ros2 launch sorting_bot detection_simulator.launch.py
+ros2 launch sorting_bot joint_trajectory_publisher.launch.py
+```
+
+### Experiment
 Experiment is launched with commands
 ```bash
 ros2 launch so_100_arm hardware.launch.py
 ros2 launch so_100_arm rviz.launch.py
 ros2 launch sorting_bot apriltag_detection.launch.py
-ros2 launch sorting_bot trajectory_publisher.launch.py
-```
+ros2 launch sorting_bot joint_trajectory_publisher.launch.py
