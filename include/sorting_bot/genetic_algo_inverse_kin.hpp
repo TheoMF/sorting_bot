@@ -1,16 +1,13 @@
-#include "pinocchio/algorithm/model.hpp"
-#include "pinocchio/algorithm/frames.hpp"
+#include "sorting_bot/inverse_kin_base.hpp"
 
-class Individual
+class Individual : public InverseKinBase
 {
 public:
     typedef Eigen::Matrix<double, 5, 1> Vector5d;
     Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr, int ee_frame_id, const pinocchio::SE3 &in_world_M_des_pose)
-        : ee_frame_id_(ee_frame_id), in_world_M_des_pose_(in_world_M_des_pose)
+         : in_world_M_des_pose_(in_world_M_des_pose), q_(q)
     {
-        q_ = q;
-        model_ptr_ = model_ptr;
-        data_ptr_ = data_ptr;
+        initialize(model_ptr, data_ptr, ee_frame_id);
         set_score(q);
     }
 
@@ -55,41 +52,20 @@ public:
             double rand_value = unif(re);
             q_[joint_idx] += rand_value;
         }
-        set_q_in_joint_limits();
+        set_q_in_joint_limits(q_);
         set_score(q_);
-    }
-
-    void set_q_in_joint_limits()
-    {
-        for (int joint_idx = 0; joint_idx < model_ptr_->nq; joint_idx++)
-        {
-            if (q_[joint_idx] < model_ptr_->lowerPositionLimit[joint_idx])
-                q_[joint_idx] = model_ptr_->lowerPositionLimit[joint_idx];
-            if (q_[joint_idx] > model_ptr_->upperPositionLimit[joint_idx])
-                q_[joint_idx] = model_ptr_->upperPositionLimit[joint_idx];
-        }
     }
 
 private:
     std::vector<double> joint_amplitudes;
-    int ee_frame_id_;
+    
     pinocchio::SE3 in_world_M_des_pose_;
-    std::shared_ptr<pinocchio::Model> model_ptr_;
-    std::shared_ptr<pinocchio::Data> data_ptr_;
     Eigen::VectorXd q_;
     double score_;
 };
 
-class GeneticAlgoInvKin{
+class GeneticAlgoInverseKin : public InverseKinBase{
 public:
-
-    void initialize(std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr,int ee_frame_id)
-    {
-        model_ptr_ = model_ptr;
-        data_ptr_ = data_ptr;
-        ee_frame_id_ = ee_frame_id;
-        nq_ = model_ptr_->nq;
-    }
     void initialize_population(const pinocchio::SE3 &in_world_M_des_pose)
     {
         double lower_bound = 0.;
@@ -160,15 +136,10 @@ public:
 
         return population_[0];
     }
+
 private:
     std::vector<Individual> population_, new_population_;
 
-    //Pinocchio model attributes
-    std::shared_ptr<pinocchio::Model> model_ptr_;
-    std::shared_ptr<pinocchio::Data> data_ptr_;
-    int ee_frame_id_;
-    int nq_;
-    
     // genetic algorithm parameters
     int population_size_ = 3000;
     int max_iter_ = 30;
