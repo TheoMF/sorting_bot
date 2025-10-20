@@ -24,23 +24,26 @@ enum StateMachine
   PLACING
 };
 
-class TrajectoryPublisher : public rclcpp::Node
+class JointTrajectoryPublisher : public rclcpp::Node
 {
 public:
-  TrajectoryPublisher()
-      : Node("trajectory_publisher")
+  JointTrajectoryPublisher()
+      : Node("joint_trajectory_publisher")
   {
-    publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>("/so_100_arm_controller/joint_trajectory", 10);
-    gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/so_100_arm_gripper_controller/commands", 10);
+    rclcpp::QoS qos_profile(10);
+    qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+    qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+    publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>("/joint_trajectory_controller/joint_trajectory", qos_profile);
+    gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/so_100_arm_gripper_controller/commands", rclcpp::SystemDefaultsQoS());
     state_subscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
-        "/command", 10, std::bind(&TrajectoryPublisher::topic_callback, this, std::placeholders::_1));
+        "/joint_states", rclcpp::SystemDefaultsQoS(), std::bind(&JointTrajectoryPublisher::topic_callback, this, std::placeholders::_1));
     timer_ = this->create_wall_timer(
-        10ms, std::bind(&TrajectoryPublisher::timer_callback, this));
+        10ms, std::bind(&JointTrajectoryPublisher::timer_callback, this));
     start_time = this->get_clock()->now();
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-    const std::string urdf_filename = std::string("/home/tmartinez/ros2_ws/src/SO-100-arm/urdf/so101_new_calib.urdf");
+    const std::string urdf_filename = std::string("/home/gepetto/ros2_ws/src/repos/SO-100-arm/urdf/so101_new_calib.urdf");
     std::string end_effector_name = "gripper_frame_link";
     motion_planner.initialize(urdf_filename, end_effector_name);
     RCLCPP_INFO(this->get_logger(), "finished setup");
@@ -105,7 +108,8 @@ private:
   pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame)
   {
     std::string cameraFrameRel = "camera";
-    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(cameraFrameRel, child_frame, tf2::TimePointZero);
+    rclcpp::Time now = this->get_clock()->now();
+    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(cameraFrameRel, child_frame, now,100ms);
     pinocchio::SE3 in_camera_M_cardboard = transform_msg_to_SE3(t.transform);
     auto current_stamp = this->get_clock()->now();
     int nanosec_delay = evaluate_vision_delay(child_frame);
@@ -246,7 +250,7 @@ private:
       if (first_time_)
       {
         send_gripper_pose_msg(1.5);
-        trajectory_computing_thread_ = std::thread(&TrajectoryPublisher::compute_trajectory, this);
+        trajectory_computing_thread_ = std::thread(&JointTrajectoryPublisher::compute_trajectory, this);
       }
       first_time_ = false;
       if (trajectory_ready_)
@@ -266,7 +270,7 @@ private:
             state_ = GOING_TO_GRASP_POSE;
             trajectory_ready_ = false;
             trajectory_computing_thread_.join();
-            trajectory_computing_thread_ = std::thread(&TrajectoryPublisher::compute_trajectory, this);
+            trajectory_computing_thread_ = std::thread(&JointTrajectoryPublisher::compute_trajectory, this);
           }
         }
       }
@@ -281,7 +285,7 @@ private:
           state_ = PLACING;
           trajectory_ready_ = false;
           trajectory_computing_thread_.join();
-          trajectory_computing_thread_ = std::thread(&TrajectoryPublisher::compute_trajectory, this);
+          trajectory_computing_thread_ = std::thread(&JointTrajectoryPublisher::compute_trajectory, this);
           usleep(700000);
           send_gripper_pose_msg(0.2);
           usleep(300000);
@@ -299,7 +303,7 @@ private:
           first_time_reach_q_init = true;
           trajectory_ready_ = false;
           trajectory_computing_thread_.join();
-          trajectory_computing_thread_ = std::thread(&TrajectoryPublisher::compute_trajectory, this);
+          trajectory_computing_thread_ = std::thread(&JointTrajectoryPublisher::compute_trajectory, this);
           usleep(600000);
           send_gripper_pose_msg(1.5);
         }
@@ -309,7 +313,7 @@ private:
     // GET TRANSFORM
     // for (int joint_idx = 0; joint_idx < 5; joint_idx++)
     //  RCLCPP_INFO(this->get_logger(), "q%d %.6f", joint_idx, q[joint_idx]);
-
+    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, "current q %.6f %.6f %.6f %.6f %.6f", q[0], q[1], q[2], q[3], q[4]);
     // set then send joint control msg
     trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
     joint_trajectory_msg.joint_names = joint_names_;
@@ -350,7 +354,7 @@ private:
   Eigen::VectorXd q_waypoint_above_object;
   std::vector<double> q_waypoint_up_vec = {0.256175, -0.573709, -0.335942, 1.032369, 1.679709};
   Eigen::VectorXd q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(q_waypoint_up_vec.data(), q_waypoint_up_vec.size());
-  std::vector<double> q_init_vec = {0.322136, 0.018408, -0.678020, 1.794758, 1.684311};
+  std::vector<double> q_init_vec = {0.322136, 0.018408, -0.678020, 1.65, 1.684311};
   Eigen::VectorXd q_init_ = Eigen::Map<Eigen::VectorXd>(q_init_vec.data(), q_init_vec.size());
   std::vector<std::vector<double>> q_types{
       {-0.569107, -0.408039, -0.110447, 1.207243, 1.684311},
@@ -368,7 +372,7 @@ private:
 int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<TrajectoryPublisher>());
+  rclcpp::spin(std::make_shared<JointTrajectoryPublisher>());
   rclcpp::shutdown();
   return 0;
 }
