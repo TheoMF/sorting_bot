@@ -1,3 +1,5 @@
+#include <random>
+
 #include "sorting_bot/inverse_kin_base.hpp"
 
 class Individual : public InverseKinBase

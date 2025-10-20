@@ -1,15 +1,4 @@
-#include <iostream>
-#include <vector>
-#include <math.h>
-#include <memory>
-#include <random>
-#include <ranges>
-
 #include "pinocchio/parsers/urdf.hpp"
-#include "pinocchio/multibody/sample-models.hpp"
-#include "pinocchio/algorithm/joint-configuration.hpp"
-#include "pinocchio/algorithm/model.hpp"
-#include "pinocchio/algorithm/frames.hpp"
 
 #include "sorting_bot/quintic_polynom.hpp"
 #include "sorting_bot/genetic_algo_inverse_kin.hpp"

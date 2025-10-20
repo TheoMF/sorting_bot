@@ -1,11 +1,5 @@
 #include "sorting_bot/inverse_kin_base.hpp"
 
-#include "pinocchio/parsers/urdf.hpp"
-#include "pinocchio/multibody/sample-models.hpp"
-#include "pinocchio/algorithm/joint-configuration.hpp"
-#include "pinocchio/algorithm/model.hpp"
-#include "pinocchio/algorithm/frames.hpp"
-
 class InverseKin : public InverseKinBase{
 
 public:
