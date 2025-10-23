@@ -17,7 +17,6 @@
 
 using namespace std::chrono_literals;
 
-
 class JointTrajectoryPublisher : public rclcpp::Node
 {
 public:
@@ -42,7 +41,7 @@ public:
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     const std::string urdf_filename = std::string("/home/gepetto/ros2_ws/src/repos/SO-100-arm/urdf/so101_new_calib.urdf");
     std::string end_effector_name = "gripper_frame_link";
-    planner_manager.initialize(tf_buffer_,urdf_filename, end_effector_name);
+    planner_manager.initialize(tf_buffer_, urdf_filename, end_effector_name);
     RCLCPP_INFO(this->get_logger(), "finished setup");
   }
 
@@ -51,7 +50,7 @@ private:
   {
     std::vector<double> q_vec = msg.position;
     q_vec.pop_back();
-    q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
+    current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
     ready = true;
   }
 
@@ -94,34 +93,25 @@ private:
     tf_broadcaster_->sendTransform(transform_msg);
   }
 
-
-  void
-  timer_callback()
+  std::vector<double> get_trajectory_joint_value()
   {
-    // wait for robot configuration
-    if (ready == false)
-      return;
-
+    std::vector<double> q_traj;
     // Update state
     bool action_is_finished = false;
-    if (actions_.size() > 0) 
-      action_is_finished = planner_manager.action_is_finished(q,time,actions_[0]);
-    std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(q);
+    if (actions_.size() > 0)
+      action_is_finished = planner_manager.action_is_finished(current_q, time, actions_[0]);
+    std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q);
     actions_.insert(actions_.end(), action.begin(), action.end());
 
     // GET TRANSFORM
     // for (int joint_idx = 0; joint_idx < 5; joint_idx++)
     //  RCLCPP_INFO(this->get_logger(), "q%d %.6f", joint_idx, q[joint_idx]);
-    //RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, "current q %.6f %.6f %.6f %.6f %.6f", q[0], q[1], q[2], q[3], q[4]);
-    // set then send joint control msg
-    trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
-    joint_trajectory_msg.joint_names = joint_names_;
-    trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-    std::string curr_act;
-    std::vector<double> current_q(q.data(), q.data() + q.size());
+
+    std::string current_action_str;
+    std::vector<double> current_q_vec(current_q.data(), current_q.data() + current_q.size());
     if (actions_.size() == 0)
     {
-      curr_point.positions = current_q;
+      q_traj = current_q_vec;
     }
     else
     {
@@ -130,62 +120,63 @@ private:
       switch (action_type)
       {
       case MOVE_JAW:
-        curr_act="move_jaw";
+        current_action_str = "move_jaw";
         send_gripper_pose_msg(std::get<1>(action));
 
-        curr_point.positions = current_q;
+        q_traj = current_q_vec;
         break;
       case WAIT:
-        curr_act="wait "+ std::to_string(std::get<1>(action));
-        curr_point.positions = current_q;
+        current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
+        q_traj = current_q_vec;
         break;
       case FOLLOW_TRAJ:
         if (planner_manager.trajectory_ready())
         {
-          curr_act="traj ready "+ std::to_string(std::get<1>(action));
+          current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
           Eigen::VectorXd q_plan = planner_manager.get_configuration_at_t(time);
           std::vector<double> q_plan_vec(q_plan.data(), q_plan.data() + q_plan.size());
-          curr_point.positions = q_plan_vec;
+          q_traj = q_plan_vec;
         }
         else
         {
-          curr_act="traj not ready "+ std::to_string(std::get<1>(action));
-          std::vector<double> current_q(q.data(), q.data() + q.size());
-          curr_point.positions = current_q;
+          current_action_str = "traj not ready id " + std::to_string(std::get<1>(action));
+          q_traj = current_q_vec;
           time = .0;
         }
         break;
       default:
-        curr_point.positions = current_q;
+        q_traj = current_q_vec;
       }
       time += .01;
-      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 80, "Current action %s", curr_act.c_str());
-      if (action_type==FOLLOW_TRAJ && planner_manager.trajectory_ready())
-        planner_manager.cout_goal();
-      /*
-      if ((action_type == WAIT && time >= std::get<1>(action)) || (action_type == FOLLOW_TRAJ && planner_manager.trajectory_ready()&& goal_pose_achieved(q, planner_manager.get_current_goal(), 5e-3))){
-        Eigen::VectorXd goal = planner_manager.get_current_goal();
-        RCLCPP_INFO(this->get_logger(), "Finished actions %d, value %.6f ",static_cast<int>(action_type), std::get<1>(action));
-        
-        actions_.erase(actions_.begin());
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 80, "Current action %s", current_action_str.c_str());
+      if (action_is_finished)
+      {
         time = 0.;
-        
-      }else if (action_type==MOVE_JAW)
-      actions_.erase(actions_.begin());*/
-      if (action_is_finished){
-        time =0.;
         actions_.erase(actions_.begin());
       }
-
     }
-    
+    return q_traj;
+  }
+
+  void
+  timer_callback()
+  {
+    // wait for robot configuration
+    if (ready == false)
+      return;
+    std::vector<double> q_traj = get_trajectory_joint_value();
+    trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+    joint_trajectory_msg.joint_names = joint_names_;
+    trajectory_msgs::msg::JointTrajectoryPoint curr_point;
+    curr_point.positions = q_traj;
     curr_point.velocities = {0.0, 0.0, 0.0, 0.0, 0.0};
     joint_trajectory_msg.points = {curr_point};
     publisher_->publish(joint_trajectory_msg);
   }
+
   enum StateMachine state_ = GOING_TO_QINIT;
   double time = 0.;
-  Eigen::VectorXd q;
+  Eigen::VectorXd current_q;
   std::vector<Eigen::VectorXd> q_waypoints;
   bool first_time_ = true, first_time_reach_q_init = true;
   rclcpp::Time start_time;

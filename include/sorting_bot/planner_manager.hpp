@@ -122,11 +122,7 @@ public:
   {
     return q_waypoints.back();
   }
-  void cout_goal()
-  {
-    std::cout << "follow goal q \n"
-              << q_waypoints.back() << std::endl;
-  }
+
   bool action_is_finished(Eigen::VectorXd q, double time, std::tuple<ActionType, double> &current_action)
   {
     ActionType action_type = std::get<0>(current_action);
