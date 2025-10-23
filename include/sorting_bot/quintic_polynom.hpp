@@ -86,6 +86,10 @@ public:
         return q;
     }
 
+    double traj_duration(){
+        return traj_duration_;
+    }
+
     bool is_initialized()
     {
         return is_initialized_;
