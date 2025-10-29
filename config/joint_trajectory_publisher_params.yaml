@@ -1,0 +1,28 @@
+---
+joint_trajectory_publisher:
+  ros__parameters:
+    q_init: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
+    q_waypoint_up: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
+    objects_frame: ["glass", "cardboard", "metal", "plastic"]
+    glass:
+      q_placing: [-0.569107, -0.408039, -0.110447, 1.207243, 1.684311]
+    cardboard:
+      q_placing: [-0.929592, -0.078233, -0.033748, 0.362019, 1.684311]
+    metal:
+      q_placing: [-1.222583, -0.891243, 0.041417, 1.764078, 1.679709]
+    plastic:
+      q_placing: [-1.497165, -0.055223, -0.504680, 1.204175, 1.670505]
+    rate: 100.0
+    joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    inverse_kin:
+      eps: 0.001
+      max_iter: 10000
+      dt: 0.1
+      damp: 0.000001
+      error_weights : [1.0, 1.0, 1.0, 0.001, 1.0, 0.2]
+    genetic_algo_inverse_kin:
+      population_size: 3000
+      max_iter: 30
+      nb_keep_ind: 400
+      eps: 0.001
+      mutation_max_amplitude: 0.1

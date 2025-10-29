@@ -1,0 +1,70 @@
+joint_trajectory_publisher:
+  q_init:
+    type: double_array
+    default_value: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
+    description: "Initial configuration to look for objects."
+  q_waypoint_up:
+    type: double_array
+    default_value: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
+    description: "waypoint configuration used when placing objects."
+  objects_frame:
+    type: string_array
+    default_value: ["glass", "cardboard", "metal", "plastic"]
+    description: "Frame name of the objects in tf."
+  __map_objects_frame:
+    q_placing:
+      type: double_array
+      description: Placing configuration of the corresponding object.
+      validation:
+        not_empty<>: []
+  rate:
+    type: double
+    default_value: 100.0
+    description: "Rate of node in hertz."
+  joint_names:
+    type: string_array
+    default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    description: "Joint names of the robot."
+  inverse_kin:
+    eps:
+      type: double
+      default_value: 0.001
+      description: "Desired precision."
+    max_iter:
+      type: int
+      default_value: 10000
+      description: "Maximum number of iteration."
+    dt:
+      type: double
+      default_value: 0.1
+      description: "Integration step."
+    damp:
+      type: double
+      default_value: 0.000001
+      description: "Dampener coefficient."
+    error_weights:
+      type: double_array
+      description: Weights for the error vector.
+      validation:
+        not_empty<>: []
+  genetic_algo_inverse_kin:
+    population_size:
+      type: int
+      default_value: 3000
+      description: "Size of the population."
+    max_iter:
+      type: int
+      default_value: 10000
+      description: "Maximum number of iteration."
+    nb_keep_ind:
+      type: int
+      default_value: 400
+      description: "Number of individuals we keep for next iteration."
+    eps:
+      type: double
+      default_value: 0.001
+      description: "Desired precision."
+    mutation_max_amplitude:
+      type: double
+      default_value: 0.1
+      description: "Max amplitude for the mutation."

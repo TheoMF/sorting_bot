@@ -7,12 +7,17 @@
   <maintainer email="theo.martinezf@gmail.com">Théo Martinez</maintainer>
   <license>BSD 3-Clause License</license>
 
+
+  <!-- ROS dependencies. -->
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>usb_cam</depend>
   <depend>pinocchio</depend>
   <depend>ros2_controllers</depend>
+  <depend>gz_ros2_control</depend>
+  <depend>generate_parameter_library</depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
