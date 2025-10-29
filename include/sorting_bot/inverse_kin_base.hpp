@@ -3,10 +3,10 @@
 
 #ifndef __sorting_bot_inverse_kin_base__
 #define __sorting_bot_inverse_kin_base__
-class InverseKinBase{
+class InverseKinBase
+{
 public:
-    InverseKinBase() {}
-    void initialize(std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr,int ee_frame_id)
+    void initialize_model(std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr, int ee_frame_id)
     {
         model_ptr_ = model_ptr;
         data_ptr_ = data_ptr;
@@ -25,13 +25,11 @@ public:
         }
     }
 
-
 protected:
-    //Pinocchio model attributes
+    // Pinocchio model attributes
     std::shared_ptr<pinocchio::Model> model_ptr_;
     std::shared_ptr<pinocchio::Data> data_ptr_;
     int ee_frame_id_;
     int nq_;
-    
 };
 #endif

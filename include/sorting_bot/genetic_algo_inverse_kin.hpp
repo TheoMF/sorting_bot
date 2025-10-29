@@ -2,14 +2,18 @@
 
 #include "sorting_bot/inverse_kin_base.hpp"
 
+#include "sorting_bot/joint_trajectory_publisher_parameters.hpp"
+
 class Individual : public InverseKinBase
 {
 public:
     typedef Eigen::Matrix<double, 5, 1> Vector5d;
-    Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr, int ee_frame_id, const pinocchio::SE3 &in_world_M_des_pose)
-         : in_world_M_des_pose_(in_world_M_des_pose), q_(q)
+    Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model_ptr, std::shared_ptr<pinocchio::Data> data_ptr, const int &ee_frame_id, const pinocchio::SE3 &in_world_M_des_pose, const double &mutation_max_amplitude)
+        : in_world_M_des_pose_(in_world_M_des_pose), q_(q)
     {
-        initialize(model_ptr, data_ptr, ee_frame_id);
+        mutation_lower_bound_ = -mutation_max_amplitude / 2.0;
+        mutation_upper_bound_ = mutation_max_amplitude / 2.0;
+        initialize_model(model_ptr, data_ptr, ee_frame_id);
         set_score(q);
     }
 
@@ -35,20 +39,17 @@ public:
     Individual cross(const Individual &other_indiv)
     {
         Eigen::VectorXd cross_q = (q_ + other_indiv.q()) / 2.0;
-        return Individual(cross_q, model_ptr_, data_ptr_, ee_frame_id_, in_world_M_des_pose_);
+        return Individual(cross_q, model_ptr_, data_ptr_, ee_frame_id_, in_world_M_des_pose_, mutation_upper_bound_ * 2.0);
     }
 
     void mutate()
     {
-        double lower_bound = -0.05;
-        double upper_bound = 0.05;
-
-        std::uniform_real_distribution<double> unif(lower_bound, upper_bound);
+        std::uniform_real_distribution<double>
+            unif(mutation_lower_bound_, mutation_upper_bound_);
 
         static std::default_random_engine re;
 
         // Getting a random double value
-
         for (int joint_idx = 0; joint_idx < model_ptr_->nq; joint_idx++)
         {
             double rand_value = unif(re);
@@ -59,15 +60,33 @@ public:
     }
 
 private:
-    std::vector<double> joint_amplitudes;
-    
     pinocchio::SE3 in_world_M_des_pose_;
     Eigen::VectorXd q_;
-    double score_;
+    double score_, mutation_lower_bound_, mutation_upper_bound_;
 };
 
-class GeneticAlgoInverseKin : public InverseKinBase{
+class GeneticAlgoInverseKin : public InverseKinBase
+{
 public:
+    GeneticAlgoInverseKin()
+    {
+        // Genetic algo parameters default values
+        population_size_ = 3000;
+        max_iter_ = 30;
+        nb_keep_ind = 400;
+        eps_ = 1e-3;
+        mutation_max_amplitude_ = 0.1;
+    }
+
+    void initialize(joint_trajectory_publisher::Params::GeneticAlgoInverseKin params)
+    {
+        population_size_ = params.population_size;
+        max_iter_ = params.max_iter;
+        nb_keep_ind = params.nb_keep_ind;
+        eps_ = params.eps;
+        mutation_max_amplitude_ = params.mutation_max_amplitude;
+    }
+
     void initialize_population(const pinocchio::SE3 &in_world_M_des_pose)
     {
         double lower_bound = 0.;
@@ -83,7 +102,7 @@ public:
                 double rand_value = unif(re);
                 random_q[joint_idx] = model_ptr_->lowerPositionLimit[joint_idx] + rand_value * (model_ptr_->upperPositionLimit[joint_idx] - model_ptr_->lowerPositionLimit[joint_idx]);
             }
-            population_.push_back(Individual(random_q, model_ptr_, data_ptr_, ee_frame_id_, in_world_M_des_pose));
+            population_.push_back(Individual(random_q, model_ptr_, data_ptr_, ee_frame_id_, in_world_M_des_pose, mutation_max_amplitude_));
         }
         std::sort(population_.begin(), population_.end(), [](const Individual &a, const Individual &b)
                   { return a.score() < b.score(); });
@@ -143,8 +162,6 @@ private:
     std::vector<Individual> population_, new_population_;
 
     // genetic algorithm parameters
-    int population_size_ = 3000;
-    int max_iter_ = 30;
-    int nb_keep_ind = 400;
-    double eps_ = 1e-3;
+    int population_size_, max_iter_, nb_keep_ind;
+    double eps_, mutation_max_amplitude_;
 };

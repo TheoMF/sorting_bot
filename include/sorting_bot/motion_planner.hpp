@@ -12,10 +12,10 @@ public:
   MotionPlanner()
   {
   }
-  void initialize(std::string filename, std::string ee_frame_name)
+  void initialize(std::string urdf, std::string ee_frame_name, joint_trajectory_publisher::Params params)
   {
     pinocchio::Model model;
-    pinocchio::urdf::buildModel(filename, model);
+    pinocchio::urdf::buildModelFromXML(urdf, model);
     std::vector<pinocchio::JointIndex> list_of_joints_to_lock_by_id{model.getJointId("gripper")};
     Eigen::VectorXd q_rand = pinocchio::randomConfiguration(model);
     model = pinocchio::buildReducedModel(model, list_of_joints_to_lock_by_id, q_rand);
@@ -25,8 +25,10 @@ public:
     nq_ = model_ptr_->nq;
     data_ptr_ = std::make_shared<pinocchio::Data>(data);
     ee_frame_id_ = model_ptr_->getFrameId(ee_frame_name_);
-    genetic_algo_inverse_kin_.initialize(model_ptr_, data_ptr_, ee_frame_id_);
-    inverse_kin_.initialize(model_ptr_, data_ptr_, ee_frame_id_);
+    genetic_algo_inverse_kin_.initialize_model(model_ptr_, data_ptr_, ee_frame_id_);
+    inverse_kin_.initialize_model(model_ptr_, data_ptr_, ee_frame_id_);
+    inverse_kin_.initialize(params.inverse_kin);
+    genetic_algo_inverse_kin_.initialize(params.genetic_algo_inverse_kin);
   }
 
   Eigen::VectorXd get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init, const pinocchio::SE3 &des_transform)

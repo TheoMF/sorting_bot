@@ -24,14 +24,19 @@ public:
   PlannerManager()
   {
     q_ = Eigen::VectorXd::Zero(5);
-    q_waypoint_above_object = Eigen::VectorXd::Zero(5);
+    q_waypoint_above_object_ = Eigen::VectorXd::Zero(5);
     tf_buffer_ = nullptr;
   }
 
-  void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer, std::string filename, std::string ee_frame_name)
+  void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer, std::string urdf, std::string ee_frame_name, joint_trajectory_publisher::Params params)
   {
     tf_buffer_ = tf_buffer;
-    motion_planner.initialize(filename, ee_frame_name);
+    motion_planner.initialize(urdf, ee_frame_name, params);
+    q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
+    q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
+    objects_frame_ = params.objects_frame;
+    for (std::string &object_frame : params.objects_frame)
+      q_types.push_back(params.objects_frame_map.at(object_frame).q_placing);
   }
 
   pinocchio::SE3 transform_msg_to_SE3(const geometry_msgs::msg::Transform &transform)
@@ -210,15 +215,14 @@ public:
   }
   void compute_trajectory()
   {
-
     if (state_ == GOING_TO_GRASP_POSE)
     {
       pinocchio::SE3 des_transform = std::get<1>(current_target_);
       Eigen::VectorXd q_goal = motion_planner.get_inverse_kinematic_at_pose(q_, des_transform);
       pinocchio::SE3 above_object_des_transform = des_transform;
       above_object_des_transform.translation().z() += 0.06;
-      q_waypoint_above_object = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
-      q_waypoints = {q_waypoint_above_object, q_goal};
+      q_waypoint_above_object_ = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
+      q_waypoints = {q_waypoint_above_object_, q_goal};
       Eigen::Vector3d des_trans = des_transform.translation();
     }
     else if (state_ == PLACING)
@@ -229,7 +233,7 @@ public:
       int object_idx = it - objects_frame_.begin();
       std::vector<double> q_placing_vec = q_types[object_idx];
       Eigen::VectorXd q_goal = Eigen::Map<Eigen::VectorXd>(q_placing_vec.data(), q_placing_vec.size());
-      q_waypoints = {q_waypoint_above_object, q_waypoint_up_, q_goal};
+      q_waypoints = {q_waypoint_above_object_, q_waypoint_up_, q_goal};
     }
     else if (state_ == GOING_TO_QINIT)
     {
@@ -264,19 +268,8 @@ private:
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {};
   std::thread trajectory_computing_thread_;
-  std::vector<std::string> objects_frame_{"glass", "cardboard", "metal", "plastic"};
-  std::vector<std::string> objects_done_{};
+  std::vector<std::string> objects_frame_, objects_done_ = {};
   std::tuple<std::string, pinocchio::SE3> current_target_;
-
-  Eigen::VectorXd q_waypoint_above_object;
-  std::vector<double> q_waypoint_up_vec = {0.256175, -0.573709, -0.335942, 1.032369, 1.679709};
-  Eigen::VectorXd q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(q_waypoint_up_vec.data(), q_waypoint_up_vec.size());
-  std::vector<double> q_init_vec = {0.322136, 0.018408, -0.678020, 1.65, 1.684311};
-  Eigen::VectorXd q_init_ = Eigen::Map<Eigen::VectorXd>(q_init_vec.data(), q_init_vec.size());
-  std::vector<std::vector<double>> q_types{
-      {-0.569107, -0.408039, -0.110447, 1.207243, 1.684311},
-      {-0.929592, -0.078233, -0.033748, 0.362019, 1.684311},
-      {-1.222583, -0.891243, 0.041417, 1.764078, 1.679709},
-      {-1.497165, -0.055223, -0.504680, 1.204175, 1.670505},
-  };
+  Eigen::VectorXd q_waypoint_above_object_, q_waypoint_up_, q_init_;
+  std::vector<std::vector<double>> q_types = {};
 };
