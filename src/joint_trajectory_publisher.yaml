@@ -1,4 +1,8 @@
 joint_trajectory_publisher:
+  robot_name:
+    type: string
+    default_value: "SO-101"
+    description: "Name of the robot."
   q_init:
     type: double_array
     default_value: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
@@ -7,6 +11,14 @@ joint_trajectory_publisher:
     type: double_array
     default_value: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
     description: "waypoint configuration used when placing objects."
+  joint_trajectory_topic:
+    type: string
+    default_value: "/so_100_arm_controller/joint_trajectory"
+    description: "Topic on which we publish joint trajectory."
+  gripper_command_topic:
+    type: string
+    default_value: "/so_100_arm_gripper_controller/commands"
+    description: "Topic on which we publish gripper angle commands."
   objects_frame:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]

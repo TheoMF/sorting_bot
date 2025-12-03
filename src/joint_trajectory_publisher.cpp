@@ -11,6 +11,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2/exceptions.h"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 
 #include "sorting_bot/planner_manager.hpp"
@@ -31,35 +32,62 @@ namespace joint_trajectory_publisher
         return;
       }
 
+      // Joint trajectory publisher
       rclcpp::QoS joint_trajectory_qos_profile(10);
       joint_trajectory_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
       joint_trajectory_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
-      publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>("/so_100_arm_controller/joint_trajectory", joint_trajectory_qos_profile);
-      gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/so_100_arm_gripper_controller/commands", rclcpp::SystemDefaultsQoS());
+      publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(parameters_.joint_trajectory_topic, joint_trajectory_qos_profile);
+
+      // 3d pose goal publisher for mobile robots
+      rclcpp::QoS pose_qos_profile(10);
+      pose_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+      pose_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+      pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/goal_pose", pose_qos_profile);
+
+      // Gripper angle publisher
+      if (parameters_.robot_name == "SO-101")
+      {
+        so_101_gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(parameters_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+        lekiwi_gripper_publisher_ = nullptr;
+      }
+      else if (parameters_.robot_name == "LeKiwi")
+      {
+        so_101_gripper_publisher_ = nullptr;
+        lekiwi_gripper_publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(parameters_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+      }
+
+      // Joint states subscriber
       rclcpp::QoS joint_states_qos_profile(10);
       joint_states_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
       joint_states_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
       state_subscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
-          "/joint_states", joint_states_qos_profile, std::bind(&JointTrajectoryPublisher::topic_callback, this, std::placeholders::_1));
+          "/joint_states", pose_qos_profile, std::bind(&JointTrajectoryPublisher::topic_callback, this, std::placeholders::_1));
+
+      // Robot description subscriber
       robot_description_subscriber_ = this->create_subscription<std_msgs::msg::String>(
           "/robot_description", joint_states_qos_profile, std::bind(&JointTrajectoryPublisher::robot_description_callback, this, std::placeholders::_1));
+
+      // Timers to publish joint trajectory
       timer_ = this->create_wall_timer(
           10ms, std::bind(&JointTrajectoryPublisher::timer_callback, this));
-      start_time = this->get_clock()->now();
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-      const std::string urdf_filename = std::string("/home/gepetto/ros2_ws/src/repos/SO-100-arm/urdf/so101_new_calib.urdf");
       RCLCPP_INFO(this->get_logger(), "finished setup");
     }
 
   private:
     void topic_callback(const sensor_msgs::msg::JointState &msg)
     {
-      std::vector<double> q_vec = msg.position;
-      q_vec.pop_back();
+      std::vector<double> q_vec = {};
+      for (std::string &joint_name : parameters_.joint_names)
+      {
+        int joint_idx = static_cast<int>(std::find(msg.name.begin(), msg.name.end(), joint_name) - msg.name.begin());
+        q_vec.push_back(msg.position[joint_idx]);
+      }
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
       ready = true;
+      // RCLCPP_INFO(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
@@ -70,15 +98,27 @@ namespace joint_trajectory_publisher
 
     void send_gripper_pose_msg(const double &angle)
     {
-      std_msgs::msg::Float64MultiArray gripper_command_msg;
-      std_msgs::msg::MultiArrayDimension dim_sol;
-      dim_sol.label = "position";
-      dim_sol.size = 1;
-      dim_sol.stride = 1;
-      gripper_command_msg.layout.dim.push_back(dim_sol);
-      std_msgs::msg::MultiArrayDimension max_effort_dim;
-      gripper_command_msg.data = {angle};
-      gripper_publisher_->publish(gripper_command_msg);
+      if (parameters_.robot_name == "SO-101")
+      {
+        std_msgs::msg::Float64MultiArray gripper_command_msg;
+        std_msgs::msg::MultiArrayDimension dim_sol;
+        dim_sol.label = "position";
+        dim_sol.size = 1;
+        dim_sol.stride = 1;
+        gripper_command_msg.layout.dim.push_back(dim_sol);
+        std_msgs::msg::MultiArrayDimension max_effort_dim;
+        gripper_command_msg.data = {angle};
+        so_101_gripper_publisher_->publish(gripper_command_msg);
+      }
+      else if (parameters_.robot_name == "LeKiwi")
+      {
+        trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+        joint_trajectory_msg.joint_names = {"gripper"};
+        trajectory_msgs::msg::JointTrajectoryPoint curr_point;
+        curr_point.positions = {angle};
+        joint_trajectory_msg.points = {curr_point};
+        lekiwi_gripper_publisher_->publish(joint_trajectory_msg);
+      }
     }
 
     bool load_parameters()
@@ -143,6 +183,7 @@ namespace joint_trajectory_publisher
       if (actions_.size() == 0)
       {
         q_traj = current_q_vec;
+        RCLCPP_INFO(this->get_logger(), "No action currently");
       }
       else
       {
@@ -183,6 +224,7 @@ namespace joint_trajectory_publisher
         if (action_is_finished)
         {
           time = 0.;
+          publish_random_goal_pose();
           actions_.erase(actions_.begin());
         }
       }
@@ -190,7 +232,21 @@ namespace joint_trajectory_publisher
     }
 
     void
-    timer_callback()
+    publish_random_goal_pose()
+    {
+      geometry_msgs::msg::PoseStamped pose_msg;
+      pose_msg.header.frame_id = "odom";
+      pose_msg.pose.position.x = 0.5;
+      pose_msg.pose.position.y = 0.3;
+      pose_msg.pose.position.z = 0.0;
+      pose_msg.pose.orientation.x = 0.0;
+      pose_msg.pose.orientation.y = 0.0;
+      pose_msg.pose.orientation.z = 0.0;
+      pose_msg.pose.orientation.w = 1.0;
+      pose_publisher_->publish(pose_msg);
+    }
+
+    void timer_callback()
     {
       // wait for robot configuration and robot description
       if (ready == false || planner_ready_ == false)
@@ -217,10 +273,11 @@ namespace joint_trajectory_publisher
 
     std::vector<Eigen::VectorXd> q_waypoints;
     bool first_time_ = true, first_time_reach_q_init = true;
-    rclcpp::Time start_time;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr publisher_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr gripper_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
+    rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_subscriber_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_description_subscriber_;
 
