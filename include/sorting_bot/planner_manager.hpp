@@ -112,7 +112,7 @@ public:
       }
       catch (const tf2::TransformException &ex)
       {
-        // std::cout << "didn't found transform for object "<< object_frame.c_str()<< " error : " <<ex.what()<<std::endl;
+        std::cout << "didn't found transform for object " << object_frame.c_str() << " error : " << ex.what() << std::endl;
       }
     }
     return found_transform;
