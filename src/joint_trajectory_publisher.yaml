@@ -33,6 +33,14 @@ joint_trajectory_publisher:
     type: double
     default_value: 100.0
     description: "Rate of node in hertz."
+  integration_coeff:
+    type: double
+    default_value: 0.2
+    description: "Integration coefficient used for error in configuration position."
+  des_precision:
+    type: double
+    default_value: 0.005
+    description: "Desired precision for goal configuration positions."
   joint_names:
     type: string_array
     default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]

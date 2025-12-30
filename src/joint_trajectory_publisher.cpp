@@ -87,7 +87,7 @@ namespace joint_trajectory_publisher
       }
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
       ready = true;
-      // RCLCPP_INFO(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
@@ -164,9 +164,8 @@ namespace joint_trajectory_publisher
       tf_broadcaster_->sendTransform(transform_msg);
     }
 
-    std::vector<double> get_trajectory_joint_value()
+    void update_planning()
     {
-      std::vector<double> q_traj;
       // Update state
       bool action_is_finished = false;
       if (actions_.size() > 0)
@@ -179,11 +178,9 @@ namespace joint_trajectory_publisher
       //  RCLCPP_INFO(this->get_logger(), "q%d %.6f", joint_idx, q[joint_idx]);
 
       std::string current_action_str;
-      std::vector<double> current_q_vec(current_q.data(), current_q.data() + current_q.size());
       if (actions_.size() == 0)
       {
-        q_traj = current_q_vec;
-        RCLCPP_INFO(this->get_logger(), "No action currently");
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "No action currently");
       }
       else
       {
@@ -194,41 +191,67 @@ namespace joint_trajectory_publisher
         case MOVE_JAW:
           current_action_str = "move_jaw";
           send_gripper_pose_msg(std::get<1>(action));
-
-          q_traj = current_q_vec;
           break;
         case WAIT:
           current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
-          q_traj = current_q_vec;
           break;
         case FOLLOW_TRAJ:
           if (planner_manager.trajectory_ready())
           {
             current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
             Eigen::VectorXd q_plan = planner_manager.get_configuration_at_t(time);
-            std::vector<double> q_plan_vec(q_plan.data(), q_plan.data() + q_plan.size());
-            q_traj = q_plan_vec;
+            q_traj_ = q_plan;
           }
           else
           {
             current_action_str = "traj not ready id " + std::to_string(std::get<1>(action));
-            q_traj = current_q_vec;
             time = .0;
           }
           break;
-        default:
-          q_traj = current_q_vec;
         }
         time += .01;
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 80, "Current action %s", current_action_str.c_str());
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "Current action %s", current_action_str.c_str());
         if (action_is_finished)
         {
           time = 0.;
+          integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
           publish_random_goal_pose();
           actions_.erase(actions_.begin());
         }
       }
-      return q_traj;
+      // if configuration trajectory point hasn't been initialized, use current configuration.
+      if (q_traj_ == Eigen::VectorXd::Zero(nq_))
+        q_traj_ = current_q;
+    }
+
+    Eigen::VectorXd compute_q_ref()
+    {
+      if (actions_.size() == 0)
+        return q_traj_;
+
+      // Get current state
+      std::tuple<ActionType, double> action = actions_[0];
+      ActionType action_type = std::get<0>(action);
+
+      // Add an integrator on every axis lacking precision if we follow a trajectory.
+      if (action_type == FOLLOW_TRAJ)
+      {
+        Eigen::VectorXd q_err = q_traj_ - current_q;
+        for (int idx = 0; idx < nq_; idx++)
+        {
+          if (std::abs(q_err[idx]) < parameters_.des_precision / static_cast<double>(nq_))
+          {
+            integrated_q_err_[idx] = 0.0;
+            q_err[idx] = 0.0;
+          }
+        }
+        integrated_q_err_ += 1.0 / parameters_.rate * q_err;
+        return q_traj_ + parameters_.integration_coeff * integrated_q_err_;
+      }
+      else
+      {
+        return q_traj_;
+      }
     }
 
     void
@@ -251,11 +274,14 @@ namespace joint_trajectory_publisher
       // wait for robot configuration and robot description
       if (ready == false || planner_ready_ == false)
         return;
-      std::vector<double> q_traj = get_trajectory_joint_value();
+      update_planning();
+      Eigen::VectorXd q_ref = compute_q_ref();
+
       trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
       joint_trajectory_msg.joint_names = parameters_.joint_names;
       trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-      curr_point.positions = q_traj;
+      std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
+      curr_point.positions = q_ref_vec;
       curr_point.velocities = {0.0, 0.0, 0.0, 0.0, 0.0};
 
       joint_trajectory_msg.points = {curr_point};
@@ -264,7 +290,8 @@ namespace joint_trajectory_publisher
 
     enum StateMachine state_ = GOING_TO_QINIT;
     double time = 0.;
-    Eigen::VectorXd current_q;
+    int nq_ = 5;
+    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>

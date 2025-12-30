@@ -32,6 +32,8 @@ public:
   {
     tf_buffer_ = tf_buffer;
     motion_planner.initialize(urdf, ee_frame_name, params);
+    des_precision_ = params.des_precision;
+    robot_name_ = params.robot_name;
     q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
     q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
     objects_frame_ = params.objects_frame;
@@ -131,7 +133,7 @@ public:
   bool action_is_finished(Eigen::VectorXd q, double time, std::tuple<ActionType, double> &current_action)
   {
     ActionType action_type = std::get<0>(current_action);
-    if ((action_type == WAIT && time >= std::get<1>(current_action)) || (action_type == MOVE_JAW) || (action_type == FOLLOW_TRAJ && trajectory_ready_ && goal_pose_achieved(q, get_current_goal(), 5e-3)))
+    if ((action_type == WAIT && time >= std::get<1>(current_action)) || (action_type == MOVE_JAW) || (action_type == FOLLOW_TRAJ && trajectory_ready_ && goal_pose_achieved(q, get_current_goal(), des_precision_)))
       return true;
     return false;
   }
@@ -152,7 +154,7 @@ public:
       first_time_ = false;
       if (trajectory_ready_)
       {
-        if (goal_pose_achieved(q, q_waypoints.back(), 5e-3))
+        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
         {
           if (first_time_reach_q_init)
           {
@@ -179,7 +181,7 @@ public:
     {
       if (trajectory_ready_)
       {
-        if (goal_pose_achieved(q, q_waypoints.back(), 5e-3))
+        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
         {
           std::cout << "set PLACING state" << std::endl;
           state_ = PLACING;
@@ -197,7 +199,7 @@ public:
     {
       if (trajectory_ready_)
       {
-        if (goal_pose_achieved(q, q_waypoints.back(), 5e-3))
+        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
         {
           std::cout << "set GOING_TO_QINIT state" << std::endl;
           state_ = GOING_TO_QINIT;
@@ -265,6 +267,7 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   enum StateMachine state_ = GOING_TO_QINIT;
   bool first_time_ = true, trajectory_ready_ = false, first_time_reach_q_init = true;
+  double des_precision_;
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {};
   std::thread trajectory_computing_thread_;
