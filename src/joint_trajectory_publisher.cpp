@@ -87,7 +87,7 @@ namespace joint_trajectory_publisher
       }
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
       ready = true;
-      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
+      RCLCPP_DEBUG(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
@@ -170,8 +170,11 @@ namespace joint_trajectory_publisher
       bool action_is_finished = false;
       if (actions_.size() > 0)
         action_is_finished = planner_manager.action_is_finished(current_q, time, actions_[0]);
-      std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q);
-      actions_.insert(actions_.end(), action.begin(), action.end());
+      if (actions_.size() == 0)
+      {
+        std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q);
+        actions_.insert(actions_.end(), action.begin(), action.end());
+      }
 
       // GET TRANSFORM
       // for (int joint_idx = 0; joint_idx < 5; joint_idx++)
@@ -180,7 +183,7 @@ namespace joint_trajectory_publisher
       std::string current_action_str;
       if (actions_.size() == 0)
       {
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "No action currently");
+        RCLCPP_DEBUG(this->get_logger(), "No action currently");
       }
       else
       {
@@ -210,7 +213,7 @@ namespace joint_trajectory_publisher
           break;
         }
         time += .01;
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 200, "Current action %s", current_action_str.c_str());
+        RCLCPP_DEBUG(this->get_logger(), "Current action %s", current_action_str.c_str());
         if (action_is_finished)
         {
           time = 0.;
