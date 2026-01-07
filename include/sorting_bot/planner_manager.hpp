@@ -50,40 +50,13 @@ public:
     pinocchio::SE3 se3(q, t);
     return se3;
   }
-  /*
-    int evaluate_vision_delay(const std::string &child_frame)
-    {
-      int detection_count = 0;
-      int nanosec_delay = -1;
-      geometry_msgs::msg::TransformStamped previous_t = tf_buffer_->lookupTransform("camera", child_frame, tf2::TimePointZero);
-      for (int i = 0; i < 5; i++)
-      {
-        usleep(100000);
-        geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform("camera", child_frame, tf2::TimePointZero);
-        if (t.header.stamp != previous_t.header.stamp)
-          detection_count++;
-        previous_t = t;
-      }
-      if (detection_count > 2)
-        nanosec_delay = (this->get_clock()->now() - previous_t.header.stamp).nanoseconds();
-      return nanosec_delay;
-    }*/
 
   pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame)
   {
     std::string cameraFrameRel = "camera";
-    // rclcpp::Time now = this->get_clock()->now();
     geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(cameraFrameRel, child_frame, tf2::TimePointZero); // now,100ms
     pinocchio::SE3 in_camera_M_cardboard = transform_msg_to_SE3(t.transform);
-    // auto current_stamp = this->get_clock()->now();
-    /*int nanosec_delay = evaluate_vision_delay(child_frame);
-    if (nanosec_delay == -1)
-    {
-      RCLCPP_WARN(this->get_logger(), "object %s transform is old, transform stamp seconds %d, current stamp seconds %.6f ", child_frame.c_str(), t.header.stamp.sec, current_stamp.seconds());
-      throw tf2::TransformException("object transform is too old");
-    }*/
     auto camera_transform_stamp = t.header.stamp;
-    // acamera_transform_stamp.nanosec += nanosec_delay;
     geometry_msgs::msg::TransformStamped other_t = tf_buffer_->lookupTransform(parent_frame, cameraFrameRel, camera_transform_stamp);
     pinocchio::SE3 in_base_M_camera = transform_msg_to_SE3(other_t.transform);
     return in_base_M_camera * in_camera_M_cardboard;
@@ -171,6 +144,7 @@ public:
   {
     q_ = q;
     std::vector<std::tuple<ActionType, double>> actions = {};
+    // Change state if we it has a goal and we reach it.
     if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end() && goal_pose_achieved(q))
     {
       trajectory_ready_ = false;
@@ -178,9 +152,12 @@ public:
       int new_state_idx = (int(state_) + 1) % 4;
       state_ = state_order_[new_state_idx];
     }
+
+    // Retrieve state actions the first time we're in the state
     if (!current_state_action_were_sent_)
     {
       actions = get_state_actions();
+      // Start motion planning if needed
       if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end())
       {
         if (trajectory_computing_thread_.joinable())
@@ -190,6 +167,7 @@ public:
       current_state_action_were_sent_ = true;
     }
 
+    // Handle state where we search any objects with camera
     if (state_ == SEARCHING_OBJECTS)
     {
       bool object_found = find_next_object_to_grasp_transform();
@@ -202,6 +180,7 @@ public:
     }
     return actions;
   }
+
   void compute_trajectory()
   {
     if (state_ == GOING_TO_QINIT)
