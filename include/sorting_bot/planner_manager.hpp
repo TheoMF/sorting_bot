@@ -7,6 +7,7 @@
 enum StateMachine
 {
   GOING_TO_QINIT,
+  SEARCHING_OBJECTS,
   GOING_TO_GRASP_POSE,
   PLACING
 };
@@ -26,6 +27,7 @@ public:
     q_ = Eigen::VectorXd::Zero(5);
     q_waypoint_above_object_ = Eigen::VectorXd::Zero(5);
     tf_buffer_ = nullptr;
+    robot_name_ = "SO-101";
   }
 
   void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer, std::string urdf, std::string ee_frame_name, joint_trajectory_publisher::Params params)
@@ -144,10 +146,11 @@ public:
     std::vector<std::tuple<ActionType, double>> action = {};
     if (state_ == GOING_TO_QINIT)
     {
-
       if (first_time_)
       {
         action.push_back(std::make_tuple(MOVE_JAW, 1.5));
+        if (trajectory_computing_thread_.joinable())
+          trajectory_computing_thread_.join();
         trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
         action.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       }
@@ -156,27 +159,33 @@ public:
       {
         if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
         {
-          if (first_time_reach_q_init)
-          {
-            action.push_back(std::make_tuple(WAIT, 2.0));
-            first_time_reach_q_init = false;
-          }
-          else
-          {
-            bool object_found = find_next_object_to_grasp_transform();
-            if (object_found)
-            {
-              std::cout << "set GOING_TO_GRASP_POSE state" << std::endl;
-              state_ = GOING_TO_GRASP_POSE;
-              trajectory_ready_ = false;
-              trajectory_computing_thread_.join();
-              trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
-              action.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
-            }
-          }
+          std::cout << "set SEARCHING_OBJECTS state" << std::endl;
+          state_ = SEARCHING_OBJECTS;
         }
       }
     }
+    else if (state_ == SEARCHING_OBJECTS)
+    {
+      if (first_time_reach_q_init)
+      {
+        action.push_back(std::make_tuple(WAIT, 2.0));
+        first_time_reach_q_init = false;
+      }
+      else
+      {
+        bool object_found = find_next_object_to_grasp_transform();
+        if (object_found)
+        {
+          std::cout << "set GOING_TO_GRASP_POSE state" << std::endl;
+          state_ = GOING_TO_GRASP_POSE;
+          trajectory_ready_ = false;
+          trajectory_computing_thread_.join();
+          trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
+          action.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
+        }
+      }
+    }
+
     else if (state_ == GOING_TO_GRASP_POSE)
     {
       if (trajectory_ready_)
@@ -204,12 +213,9 @@ public:
           std::cout << "set GOING_TO_QINIT state" << std::endl;
           state_ = GOING_TO_QINIT;
           first_time_reach_q_init = true;
+          first_time_ = true;
           trajectory_ready_ = false;
-          trajectory_computing_thread_.join();
-          trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
           action.push_back(std::make_tuple(WAIT, 0.6));
-          action.push_back(std::make_tuple(MOVE_JAW, 1.5));
-          action.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
         }
       }
     }
@@ -217,6 +223,7 @@ public:
   }
   void compute_trajectory()
   {
+
     if (state_ == GOING_TO_GRASP_POSE)
     {
       pinocchio::SE3 des_transform = std::get<1>(current_target_);
@@ -257,6 +264,11 @@ public:
     return trajectory_ready_;
   }
 
+  StateMachine get_state()
+  {
+    return state_;
+  }
+
   double get_traj_duration()
   {
     return motion_planner.get_traj_duration();
@@ -266,10 +278,14 @@ private:
   Eigen::VectorXd q_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   enum StateMachine state_ = GOING_TO_QINIT;
+  std::string robot_name_;
   bool first_time_ = true, trajectory_ready_ = false, first_time_reach_q_init = true;
   double des_precision_;
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {};
+  std::vector<std::vector<double>> q_inits = {{0.322136, 0.018408, -0.678020, 1.65, 1.684311}, {-0.222136, 0.018408, -0.678020, 1.65, 1.684311}, {0.822136, 0.018408, -0.678020, 1.65, 1.684311}};
+  std::vector<std::vector<double>> pose_2d_to_try_ = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
+  int pose_2d_idx_ = 0;
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};
   std::tuple<std::string, pinocchio::SE3> current_target_;

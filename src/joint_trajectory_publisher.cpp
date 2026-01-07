@@ -170,11 +170,14 @@ namespace joint_trajectory_publisher
       bool action_is_finished = false;
       if (actions_.size() > 0)
         action_is_finished = planner_manager.action_is_finished(current_q, time, actions_[0]);
+
       if (actions_.size() == 0)
       {
         std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q);
         actions_.insert(actions_.end(), action.begin(), action.end());
       }
+      StateMachine planner_state = planner_manager.get_state();
+      RCLCPP_DEBUG(this->get_logger(), "Planner state : %s", std::to_string(planner_state).c_str());
 
       // GET TRANSFORM
       // for (int joint_idx = 0; joint_idx < 5; joint_idx++)
@@ -291,7 +294,6 @@ namespace joint_trajectory_publisher
       publisher_->publish(joint_trajectory_msg);
     }
 
-    enum StateMachine state_ = GOING_TO_QINIT;
     double time = 0.;
     int nq_ = 5;
     Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
