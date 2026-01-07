@@ -122,9 +122,11 @@ public:
     return found_transform;
   }
 
-  bool goal_pose_achieved(const Eigen::VectorXd &q, Eigen::VectorXd q_goal, double des_precision)
+  bool goal_pose_achieved(const Eigen::VectorXd &q)
   {
-    return (q_goal - q).norm() < des_precision;
+    if (!trajectory_ready_)
+      return false;
+    return (q_waypoints.back() - q).norm() < des_precision_;
   }
 
   Eigen::VectorXd get_current_goal()
@@ -135,96 +137,78 @@ public:
   bool action_is_finished(Eigen::VectorXd q, double time, std::tuple<ActionType, double> &current_action)
   {
     ActionType action_type = std::get<0>(current_action);
-    if ((action_type == WAIT && time >= std::get<1>(current_action)) || (action_type == MOVE_JAW) || (action_type == FOLLOW_TRAJ && trajectory_ready_ && goal_pose_achieved(q, get_current_goal(), des_precision_)))
+    if ((action_type == WAIT && time >= std::get<1>(current_action)) || (action_type == MOVE_JAW) || (action_type == FOLLOW_TRAJ && trajectory_ready_ && goal_pose_achieved(q)))
       return true;
     return false;
+  }
+
+  std::vector<std::tuple<ActionType, double>> get_state_actions()
+  {
+    std::vector<std::tuple<ActionType, double>> actions = {};
+    switch (state_)
+    {
+    case GOING_TO_QINIT:
+      actions.push_back(std::make_tuple(MOVE_JAW, 1.5));
+      actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
+      actions.push_back(std::make_tuple(WAIT, 2.0));
+      break;
+    case GOING_TO_GRASP_POSE:
+      actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
+      actions.push_back(std::make_tuple(WAIT, 0.7));
+      actions.push_back(std::make_tuple(MOVE_JAW, 0.2));
+      actions.push_back(std::make_tuple(WAIT, 0.3));
+      break;
+    case PLACING:
+      actions.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
+      actions.push_back(std::make_tuple(MOVE_JAW, 1.5));
+      actions.push_back(std::make_tuple(WAIT, 0.5));
+      break;
+    }
+    return actions;
   }
 
   std::vector<std::tuple<ActionType, double>> update_state(Eigen::VectorXd q)
   {
     q_ = q;
-    std::vector<std::tuple<ActionType, double>> action = {};
-    if (state_ == GOING_TO_QINIT)
+    std::vector<std::tuple<ActionType, double>> actions = {};
+    if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end() && goal_pose_achieved(q))
     {
-      if (first_time_)
+      trajectory_ready_ = false;
+      current_state_action_were_sent_ = false;
+      int new_state_idx = (int(state_) + 1) % 4;
+      state_ = state_order_[new_state_idx];
+    }
+    if (!current_state_action_were_sent_)
+    {
+      actions = get_state_actions();
+      if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end())
       {
-        action.push_back(std::make_tuple(MOVE_JAW, 1.5));
         if (trajectory_computing_thread_.joinable())
           trajectory_computing_thread_.join();
         trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
-        action.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       }
-      first_time_ = false;
-      if (trajectory_ready_)
-      {
-        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
-        {
-          std::cout << "set SEARCHING_OBJECTS state" << std::endl;
-          state_ = SEARCHING_OBJECTS;
-        }
-      }
-    }
-    else if (state_ == SEARCHING_OBJECTS)
-    {
-      if (first_time_reach_q_init)
-      {
-        action.push_back(std::make_tuple(WAIT, 2.0));
-        first_time_reach_q_init = false;
-      }
-      else
-      {
-        bool object_found = find_next_object_to_grasp_transform();
-        if (object_found)
-        {
-          std::cout << "set GOING_TO_GRASP_POSE state" << std::endl;
-          state_ = GOING_TO_GRASP_POSE;
-          trajectory_ready_ = false;
-          trajectory_computing_thread_.join();
-          trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
-          action.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
-        }
-      }
+      current_state_action_were_sent_ = true;
     }
 
-    else if (state_ == GOING_TO_GRASP_POSE)
+    if (state_ == SEARCHING_OBJECTS)
     {
-      if (trajectory_ready_)
+      bool object_found = find_next_object_to_grasp_transform();
+      if (object_found)
       {
-        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
-        {
-          std::cout << "set PLACING state" << std::endl;
-          state_ = PLACING;
-          trajectory_ready_ = false;
-          trajectory_computing_thread_.join();
-          trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
-          action.push_back(std::make_tuple(WAIT, 0.7));
-          action.push_back(std::make_tuple(MOVE_JAW, 0.2));
-          action.push_back(std::make_tuple(WAIT, 0.3));
-          action.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-        }
+        state_ = GOING_TO_GRASP_POSE;
+        trajectory_ready_ = false;
+        current_state_action_were_sent_ = false;
       }
     }
-    else if (state_ == PLACING)
-    {
-      if (trajectory_ready_)
-      {
-        if (goal_pose_achieved(q, q_waypoints.back(), des_precision_))
-        {
-          std::cout << "set GOING_TO_QINIT state" << std::endl;
-          state_ = GOING_TO_QINIT;
-          first_time_reach_q_init = true;
-          first_time_ = true;
-          trajectory_ready_ = false;
-          action.push_back(std::make_tuple(WAIT, 0.6));
-        }
-      }
-    }
-    return action;
+    return actions;
   }
   void compute_trajectory()
   {
-
-    if (state_ == GOING_TO_GRASP_POSE)
+    if (state_ == GOING_TO_QINIT)
+    {
+      q_waypoints = {q_init_};
+    }
+    else if (state_ == GOING_TO_GRASP_POSE)
     {
       pinocchio::SE3 des_transform = std::get<1>(current_target_);
       Eigen::VectorXd q_goal = motion_planner.get_inverse_kinematic_at_pose(q_, des_transform);
@@ -243,10 +227,6 @@ public:
       std::vector<double> q_placing_vec = q_types[object_idx];
       Eigen::VectorXd q_goal = Eigen::Map<Eigen::VectorXd>(q_placing_vec.data(), q_placing_vec.size());
       q_waypoints = {q_waypoint_above_object_, q_waypoint_up_, q_goal};
-    }
-    else if (state_ == GOING_TO_QINIT)
-    {
-      q_waypoints = {q_init_};
     }
     motion_planner.set_plan(q_, q_waypoints);
     trajectory_ready_ = true;
@@ -278,8 +258,10 @@ private:
   Eigen::VectorXd q_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   enum StateMachine state_ = GOING_TO_QINIT;
+  std::vector<StateMachine> moving_state_ = {GOING_TO_QINIT, GOING_TO_GRASP_POSE, PLACING},
+                            state_order_ = {GOING_TO_QINIT, SEARCHING_OBJECTS, GOING_TO_GRASP_POSE, PLACING};
   std::string robot_name_;
-  bool first_time_ = true, trajectory_ready_ = false, first_time_reach_q_init = true;
+  bool first_time_ = true, trajectory_ready_ = false, first_time_reach_q_init = true, current_state_action_were_sent_ = false;
   double des_precision_;
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {};
