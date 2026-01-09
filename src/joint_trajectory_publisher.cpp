@@ -12,6 +12,7 @@
 #include "tf2/exceptions.h"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 
 #include "sorting_bot/planner_manager.hpp"
@@ -63,6 +64,13 @@ namespace joint_trajectory_publisher
       state_subscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
           "/joint_states", pose_qos_profile, std::bind(&JointTrajectoryPublisher::topic_callback, this, std::placeholders::_1));
 
+      // Odometry subscriber
+      rclcpp::QoS odometry_qos_profile(10);
+      odometry_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+      odometry_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+      odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
+          "/odom", pose_qos_profile, std::bind(&JointTrajectoryPublisher::odom_callback, this, std::placeholders::_1));
+
       // Robot description subscriber
       robot_description_subscriber_ = this->create_subscription<std_msgs::msg::String>(
           "/robot_description", joint_states_qos_profile, std::bind(&JointTrajectoryPublisher::robot_description_callback, this, std::placeholders::_1));
@@ -88,6 +96,12 @@ namespace joint_trajectory_publisher
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
       ready = true;
       RCLCPP_DEBUG(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
+    }
+
+    void odom_callback(const nav_msgs::msg::Odometry &msg)
+    {
+      base_pose_[0] = msg.pose.pose.position.x;
+      base_pose_[1] = msg.pose.pose.position.y;
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
@@ -138,11 +152,6 @@ namespace joint_trajectory_publisher
       return true;
     }
 
-    bool goal_pose_achieved(const Eigen::VectorXd &q, Eigen::VectorXd q_goal, double des_precision)
-    {
-      return (q_goal - q).norm() < des_precision;
-    }
-
     void publish_transform(const pinocchio::SE3 &transform, const std::string parent_frame, std::string child_frame)
     {
       geometry_msgs::msg::TransformStamped transform_msg;
@@ -173,7 +182,7 @@ namespace joint_trajectory_publisher
 
       if (actions_.size() == 0)
       {
-        std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q);
+        std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q, base_pose_);
         actions_.insert(actions_.end(), action.begin(), action.end());
       }
       StateMachine planner_state = planner_manager.get_state();
@@ -195,13 +204,29 @@ namespace joint_trajectory_publisher
         switch (action_type)
         {
         case MOVE_JAW:
+        {
           current_action_str = "move_jaw";
           send_gripper_pose_msg(std::get<1>(action));
           break;
+        }
+        case MOVE_BASE:
+        {
+          current_action_str = "move_base";
+          if (!goal_base_pose_published_)
+          {
+            std::vector<double> base_pose = planner_manager.get_goal_base_pose();
+            publish_goal_base_pose(base_pose);
+            goal_base_pose_published_ = true;
+          }
+          break;
+        }
         case WAIT:
+        {
           current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
           break;
+        }
         case FOLLOW_TRAJ:
+        {
           if (planner_manager.trajectory_ready())
           {
             current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
@@ -215,14 +240,15 @@ namespace joint_trajectory_publisher
           }
           break;
         }
+        }
         time += .01;
         RCLCPP_DEBUG(this->get_logger(), "Current action %s", current_action_str.c_str());
         if (action_is_finished)
         {
           time = 0.;
           integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
-          publish_random_goal_pose();
           actions_.erase(actions_.begin());
+          goal_base_pose_published_ = false;
         }
       }
       // if configuration trajectory point hasn't been initialized, use current configuration.
@@ -245,7 +271,7 @@ namespace joint_trajectory_publisher
         Eigen::VectorXd q_err = q_traj_ - current_q;
         for (int idx = 0; idx < nq_; idx++)
         {
-          if (std::abs(q_err[idx]) < parameters_.des_precision / static_cast<double>(nq_))
+          if (std::abs(q_err[idx]) < parameters_.des_precision * 0.5 / static_cast<double>(nq_))
           {
             integrated_q_err_[idx] = 0.0;
             q_err[idx] = 0.0;
@@ -260,13 +286,12 @@ namespace joint_trajectory_publisher
       }
     }
 
-    void
-    publish_random_goal_pose()
+    void publish_goal_base_pose(const std::vector<double> &base_pose)
     {
       geometry_msgs::msg::PoseStamped pose_msg;
       pose_msg.header.frame_id = "odom";
-      pose_msg.pose.position.x = 0.5;
-      pose_msg.pose.position.y = 0.3;
+      pose_msg.pose.position.x = base_pose[0];
+      pose_msg.pose.position.y = base_pose[1];
       pose_msg.pose.position.z = 0.0;
       pose_msg.pose.orientation.x = 0.0;
       pose_msg.pose.orientation.y = 0.0;
@@ -297,6 +322,7 @@ namespace joint_trajectory_publisher
     double time = 0.;
     int nq_ = 5;
     Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
+    std::vector<double> base_pose_ = {0.0, 0.0};
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
@@ -304,13 +330,14 @@ namespace joint_trajectory_publisher
     joint_trajectory_publisher::Params parameters_;
 
     std::vector<Eigen::VectorXd> q_waypoints;
-    bool first_time_ = true, first_time_reach_q_init = true;
+    bool goal_base_pose_published_ = false;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
     rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_subscriber_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_description_subscriber_;
 
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
