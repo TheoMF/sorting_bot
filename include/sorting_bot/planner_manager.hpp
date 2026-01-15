@@ -7,7 +7,6 @@
 enum StateMachine
 {
   GOING_TO_QINIT,
-  SEARCHING_OBJECTS,
   GOING_TO_GRASP_POSE,
   PLACING
 };
@@ -18,6 +17,7 @@ enum ActionType
   MOVE_BASE,
   WAIT,
   FOLLOW_TRAJ,
+  SEARCH_OBJECT,
   SEARCH_TRANSFORM
 };
 
@@ -154,6 +154,7 @@ public:
       actions.push_back(std::make_tuple(WAIT, 2.0));
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
+      actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
       break;
     case GOING_TO_GRASP_POSE:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
@@ -175,6 +176,23 @@ public:
     {
       std::tuple<ActionType, double> action = actions_[0];
       ActionType action_type = std::get<0>(action);
+      if (action_type == SEARCH_OBJECT)
+      {
+        bool object_found = find_next_object_to_grasp_transform();
+        if (object_found)
+        {
+          state_ = GOING_TO_GRASP_POSE;
+          current_state_action_were_sent_ = false;
+          time_ = 0.;
+          actions_.erase(actions_.begin());
+        }
+        else if (robot_name_ == "LeKiwi")
+        {
+          current_state_action_were_sent_ = false;
+          time_ = 0.;
+          actions_.erase(actions_.begin());
+        }
+      }
       if (action_is_finished(q_, time_, action))
       {
         actions_.erase(actions_.begin());
@@ -220,24 +238,6 @@ public:
         trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
       }
       current_state_action_were_sent_ = true;
-    }
-
-    // Handle state where we search any objects with camera
-    if (state_ == SEARCHING_OBJECTS)
-    {
-      bool object_found = find_next_object_to_grasp_transform();
-      if (object_found)
-      {
-        state_ = GOING_TO_GRASP_POSE;
-        current_state_action_were_sent_ = false;
-        time_ = 0.;
-      }
-      else if (robot_name_ == "LeKiwi")
-      {
-        state_ = GOING_TO_QINIT;
-        current_state_action_were_sent_ = false;
-        time_ = 0.;
-      }
     }
     if (trajectory_ready_ == false)
       return;
@@ -317,7 +317,7 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   enum StateMachine state_ = GOING_TO_QINIT;
   std::vector<StateMachine> moving_state_ = {GOING_TO_QINIT, GOING_TO_GRASP_POSE, PLACING},
-                            state_order_ = {GOING_TO_QINIT, SEARCHING_OBJECTS, GOING_TO_GRASP_POSE, PLACING};
+                            state_order_ = {GOING_TO_QINIT, GOING_TO_GRASP_POSE, PLACING};
   std::vector<std::tuple<ActionType, double>> actions_ = {};
   std::string robot_name_;
   bool trajectory_ready_ = false, current_state_action_were_sent_ = false, goal_base_pose_published_ = false;
