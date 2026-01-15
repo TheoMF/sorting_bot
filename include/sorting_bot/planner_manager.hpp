@@ -13,6 +13,7 @@ enum StateMachine
 };
 enum ActionType
 {
+  NONE,
   MOVE_JAW,
   MOVE_BASE,
   WAIT,
@@ -81,7 +82,7 @@ public:
         Eigen::Quaterniond rot_x_axis_pi_quat(0., 1., 0., 0.);
         const pinocchio::SE3 rot_pi_x_axis(rot_x_axis_pi_quat, Eigen::Vector3d(0., 0., 0.));
         des_transform = des_transform * rot_pi_x_axis;
-        const Eigen::Vector3d in_base_trans = Eigen::Vector3d(0.04, -0.005, 0.02);
+        const Eigen::Vector3d in_base_trans = Eigen::Vector3d(0.045, -0.005, 0.035);
         Eigen::Vector3d in_des_trans = des_transform.rotation().inverse() * in_base_trans;
         des_transform.translation() += in_des_trans;
         // publish_transform(des_transform, "base_link", "desired_pose");
@@ -102,15 +103,25 @@ public:
   {
     if (!trajectory_ready_)
       return false;
-    return (q_waypoints.back() - q).norm() < des_precision_;
+    for (int angle_idx = 0; angle_idx < nq_; angle_idx++)
+    {
+      if (std::abs(q_waypoints.back()[angle_idx] - q[angle_idx]) > des_precision_)
+        return false;
+    }
+    return true;
   }
 
   bool goal_base_pose_achieved()
   {
-    std::vector<double> goal_base_pose = pose_2d_to_try_[pose_2d_idx_];
-    if (std::abs(base_pose_[0] - pose_2d_to_try_[pose_2d_idx_][0]) < 0.05 && std::abs(base_pose_[1] - pose_2d_to_try_[pose_2d_idx_][1]) < 0.05)
+    Eigen::VectorXd dist_vec_to_goal_base_pose = base_pose_ - base_poses_waypoints_[base_pose_waypoint_idx_];
+    if (dist_vec_to_goal_base_pose.head(2).norm() < 0.05 && std::abs(dist_vec_to_goal_base_pose[2]) < 0.25)
       return true;
     return false;
+  }
+
+  bool goal_base_pose_published()
+  {
+    return goal_base_pose_published_;
   }
 
   Eigen::VectorXd get_current_goal()
@@ -127,9 +138,9 @@ public:
     return false;
   }
 
-  std::vector<double> get_goal_base_pose()
+  Eigen::VectorXd get_goal_base_pose()
   {
-    return pose_2d_to_try_[pose_2d_idx_];
+    return base_poses_waypoints_[base_pose_waypoint_idx_];
   }
 
   std::vector<std::tuple<ActionType, double>> get_state_actions()
@@ -158,16 +169,38 @@ public:
     }
     return actions;
   }
+  void update_actions()
+  {
+    if (actions_.size() > 0)
+    {
+      std::tuple<ActionType, double> action = actions_[0];
+      ActionType action_type = std::get<0>(action);
+      if (action_is_finished(q_, time_, action))
+      {
+        actions_.erase(actions_.begin());
+        time_ = 0.;
+        goal_base_pose_published_ = false;
+      }
+      if (action_type == MOVE_BASE && time_ > 0.0)
+      {
+        goal_base_pose_published_ = true;
+      }
+      if (action_type == MOVE_BASE && time_ > goal_base_time_limit_)
+      {
+        goal_base_pose_published_ = false;
+        time_ = 0.;
+      }
+    }
+  }
 
-  std::vector<std::tuple<ActionType, double>> update_state(Eigen::VectorXd q, const std::vector<double> &base_pose)
+  void update_state(Eigen::VectorXd q, const Eigen::VectorXd &base_pose)
   {
     q_ = q;
     base_pose_ = base_pose;
-    std::vector<std::tuple<ActionType, double>> actions = {};
-    // Change state if we it has a goal and we reach it.
-    if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end() && goal_pose_achieved(q))
+    update_actions();
+    //  Change state if we it has a goal and we reach it.
+    if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end() && actions_.size() == 0 && current_state_action_were_sent_)
     {
-      trajectory_ready_ = false;
       current_state_action_were_sent_ = false;
       int new_state_idx = (int(state_) + 1) % 4;
       state_ = state_order_[new_state_idx];
@@ -176,10 +209,12 @@ public:
     // Retrieve state actions the first time we're in the state
     if (!current_state_action_were_sent_)
     {
-      actions = get_state_actions();
+      std::vector<std::tuple<ActionType, double>> actions = get_state_actions();
+      actions_.insert(actions_.end(), actions.begin(), actions.end());
       // Start motion planning if needed
       if (std::find(moving_state_.begin(), moving_state_.end(), state_) != moving_state_.end())
       {
+        trajectory_ready_ = false;
         if (trajectory_computing_thread_.joinable())
           trajectory_computing_thread_.join();
         trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
@@ -194,17 +229,26 @@ public:
       if (object_found)
       {
         state_ = GOING_TO_GRASP_POSE;
-        trajectory_ready_ = false;
         current_state_action_were_sent_ = false;
+        time_ = 0.;
       }
       else if (robot_name_ == "LeKiwi")
       {
         state_ = GOING_TO_QINIT;
-        trajectory_ready_ = false;
         current_state_action_were_sent_ = false;
+        time_ = 0.;
       }
     }
-    return actions;
+    if (trajectory_ready_ == false)
+      return;
+    time_ += 0.01;
+  }
+
+  std::tuple<ActionType, double> get_current_action()
+  {
+    if (actions_.size() == 0)
+      return std::make_tuple(NONE, 0.);
+    return actions_[0];
   }
 
   void compute_trajectory()
@@ -218,7 +262,7 @@ public:
         q_waypoints = {q_inits_[q_init_idx_]};
         q_init_idx_ = (q_init_idx_ + 1) % 3;
         if (q_init_idx_ == 0)
-          pose_2d_idx_ = (pose_2d_idx_ + 1) % 4;
+          base_pose_waypoint_idx_ = (base_pose_waypoint_idx_ + 1) % 4;
       }
     }
     else if (state_ == GOING_TO_GRASP_POSE)
@@ -246,9 +290,9 @@ public:
     std::cout << "finished setting traj" << std::endl;
   }
 
-  Eigen::VectorXd get_configuration_at_t(const double &time)
+  Eigen::VectorXd get_configuration_at_t()
   {
-    Eigen::VectorXd q = motion_planner.get_configuration_at_t(time);
+    Eigen::VectorXd q = motion_planner.get_configuration_at_t(time_);
     return q;
   }
 
@@ -268,23 +312,25 @@ public:
   }
 
 private:
+  int nq_ = 5;
   Eigen::VectorXd q_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   enum StateMachine state_ = GOING_TO_QINIT;
   std::vector<StateMachine> moving_state_ = {GOING_TO_QINIT, GOING_TO_GRASP_POSE, PLACING},
                             state_order_ = {GOING_TO_QINIT, SEARCHING_OBJECTS, GOING_TO_GRASP_POSE, PLACING};
+  std::vector<std::tuple<ActionType, double>> actions_ = {};
   std::string robot_name_;
-  bool first_time_ = true, trajectory_ready_ = false, current_state_action_were_sent_ = false;
-  double des_precision_;
+  bool trajectory_ready_ = false, current_state_action_were_sent_ = false, goal_base_pose_published_ = false;
+  double des_precision_, time_ = 0., goal_base_time_limit_ = 8.0;
   MotionPlanner motion_planner;
-  std::vector<double> base_pose_ = {0.0, 0.0};
   std::vector<Eigen::VectorXd> q_waypoints = {};
   std::vector<std::vector<double>> q_inits_vec_ = {{0.322136, 0.018408, -0.678020, 1.65, 1.684311}, {-0.222136, 0.018408, -0.678020, 1.65, 1.684311}, {0.822136, 0.018408, -0.678020, 1.65, 1.684311}};
   std::vector<Eigen::VectorXd> q_inits_ = {};
-  std::vector<std::vector<double>> q_types = {}, pose_2d_to_try_ = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
-  int pose_2d_idx_ = 0, q_init_idx_ = 0;
+  std::vector<std::vector<double>> q_types = {};
+  std::vector<Eigen::VectorXd> base_poses_waypoints_ = {Eigen::Vector3d(0.0, 0., 0.0), Eigen::Vector3d(1.0, 0.0, 0.0), Eigen::Vector3d(1.0, 1.0, 1.57), Eigen::Vector3d(0.0, 1.0, 3.14)};
+  int base_pose_waypoint_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};
   std::tuple<std::string, pinocchio::SE3> current_target_;
-  Eigen::VectorXd q_waypoint_above_object_, q_waypoint_up_, q_init_;
+  Eigen::VectorXd q_waypoint_above_object_, base_pose_ = Eigen::VectorXd::Zero(3), q_waypoint_up_, q_init_;
 };

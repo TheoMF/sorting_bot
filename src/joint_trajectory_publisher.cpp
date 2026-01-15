@@ -100,14 +100,38 @@ namespace joint_trajectory_publisher
 
     void odom_callback(const nav_msgs::msg::Odometry &msg)
     {
-      base_pose_[0] = msg.pose.pose.position.x;
-      base_pose_[1] = msg.pose.pose.position.y;
+      base_pose_ = pose_msg_to_base_pose(msg.pose.pose);
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
     {
-      planner_manager.initialize(tf_buffer_, msg.data, end_effector_name_, parameters_); //
+      planner_manager.initialize(tf_buffer_, msg.data, end_effector_name_, parameters_);
       planner_ready_ = true;
+    }
+
+    Eigen::VectorXd pose_msg_to_base_pose(const geometry_msgs::msg::Pose &msg)
+    {
+      pinocchio::SE3::Quaternion quat(msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z);
+      double yaw = quat.toRotationMatrix().eulerAngles(0, 1, 2)[2];
+      std::vector<double> pose_vec = {msg.position.x, msg.position.y, yaw};
+      return Eigen::Map<Eigen::VectorXd>(pose_vec.data(), pose_vec.size());
+    }
+
+    geometry_msgs::msg::PoseStamped base_pose_to_pose_msg(const Eigen::VectorXd &base_pose)
+    {
+      geometry_msgs::msg::PoseStamped pose_msg;
+      pose_msg.header.stamp = this->get_clock()->now();
+      pose_msg.header.frame_id = "odom";
+      pose_msg.pose.position.x = base_pose[0];
+      pose_msg.pose.position.y = base_pose[1];
+      pose_msg.pose.position.z = 0.0;
+      Eigen::AngleAxisd angle_axis_rot = Eigen::AngleAxisd(base_pose[2], Eigen::Vector3d::UnitZ());
+      Eigen::Quaterniond quat = Eigen::Quaterniond(angle_axis_rot.toRotationMatrix());
+      pose_msg.pose.orientation.x = quat.x();
+      pose_msg.pose.orientation.y = quat.y();
+      pose_msg.pose.orientation.z = quat.z();
+      pose_msg.pose.orientation.w = quat.w();
+      return pose_msg;
     }
 
     void send_gripper_pose_msg(const double &angle)
@@ -177,80 +201,55 @@ namespace joint_trajectory_publisher
     {
       // Update state
       bool action_is_finished = false;
-      if (actions_.size() > 0)
-        action_is_finished = planner_manager.action_is_finished(current_q, time, actions_[0]);
-
-      if (actions_.size() == 0)
-      {
-        std::vector<std::tuple<ActionType, double>> action = planner_manager.update_state(current_q, base_pose_);
-        actions_.insert(actions_.end(), action.begin(), action.end());
-      }
+      planner_manager.update_state(current_q, base_pose_);
+      std::tuple<ActionType, double> action = planner_manager.get_current_action();
       StateMachine planner_state = planner_manager.get_state();
       RCLCPP_DEBUG(this->get_logger(), "Planner state : %s", std::to_string(planner_state).c_str());
-
-      // GET TRANSFORM
-      // for (int joint_idx = 0; joint_idx < 5; joint_idx++)
-      //  RCLCPP_INFO(this->get_logger(), "q%d %.6f", joint_idx, q[joint_idx]);
-
       std::string current_action_str;
-      if (actions_.size() == 0)
+      ActionType action_type = std::get<0>(action);
+      switch (action_type)
       {
-        RCLCPP_DEBUG(this->get_logger(), "No action currently");
-      }
-      else
+      case MOVE_JAW:
       {
-        std::tuple<ActionType, double> action = actions_[0];
-        ActionType action_type = std::get<0>(action);
-        switch (action_type)
-        {
-        case MOVE_JAW:
-        {
-          current_action_str = "move_jaw";
-          send_gripper_pose_msg(std::get<1>(action));
-          break;
-        }
-        case MOVE_BASE:
-        {
-          current_action_str = "move_base";
-          if (!goal_base_pose_published_)
-          {
-            std::vector<double> base_pose = planner_manager.get_goal_base_pose();
-            publish_goal_base_pose(base_pose);
-            goal_base_pose_published_ = true;
-          }
-          break;
-        }
-        case WAIT:
-        {
-          current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
-          break;
-        }
-        case FOLLOW_TRAJ:
-        {
-          if (planner_manager.trajectory_ready())
-          {
-            current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
-            Eigen::VectorXd q_plan = planner_manager.get_configuration_at_t(time);
-            q_traj_ = q_plan;
-          }
-          else
-          {
-            current_action_str = "traj not ready id " + std::to_string(std::get<1>(action));
-            time = .0;
-          }
-          break;
-        }
-        }
-        time += .01;
-        RCLCPP_DEBUG(this->get_logger(), "Current action %s", current_action_str.c_str());
-        if (action_is_finished)
-        {
-          time = 0.;
-          integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
-          actions_.erase(actions_.begin());
-          goal_base_pose_published_ = false;
-        }
+        current_action_str = "move_jaw";
+        send_gripper_pose_msg(std::get<1>(action));
+        break;
       }
+      case MOVE_BASE:
+      {
+        Eigen::VectorXd base_pose = planner_manager.get_goal_base_pose();
+        current_action_str = "move_base goal : " + std::to_string(base_pose[0]) + " " + std::to_string(base_pose[1]);
+        if (!planner_manager.goal_base_pose_published())
+          publish_goal_base_pose(base_pose);
+        break;
+      }
+      case WAIT:
+      {
+        current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
+        break;
+      }
+      case NONE:
+      {
+        current_action_str = "none";
+        break;
+      }
+      case FOLLOW_TRAJ:
+      {
+        if (planner_manager.trajectory_ready())
+        {
+          current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
+          Eigen::VectorXd q_plan = planner_manager.get_configuration_at_t(); // time
+          q_traj_ = q_plan;
+        }
+        else
+        {
+          current_action_str = "traj not ready id " + std::to_string(std::get<1>(action));
+        }
+        break;
+      }
+      }
+      RCLCPP_DEBUG(this->get_logger(), "Current action %s", current_action_str.c_str());
+
       // if configuration trajectory point hasn't been initialized, use current configuration.
       if (q_traj_ == Eigen::VectorXd::Zero(nq_))
         q_traj_ = current_q;
@@ -258,11 +257,8 @@ namespace joint_trajectory_publisher
 
     Eigen::VectorXd compute_q_ref()
     {
-      if (actions_.size() == 0)
-        return q_traj_;
-
       // Get current state
-      std::tuple<ActionType, double> action = actions_[0];
+      std::tuple<ActionType, double> action = planner_manager.get_current_action();
       ActionType action_type = std::get<0>(action);
 
       // Add an integrator on every axis lacking precision if we follow a trajectory.
@@ -271,9 +267,8 @@ namespace joint_trajectory_publisher
         Eigen::VectorXd q_err = q_traj_ - current_q;
         for (int idx = 0; idx < nq_; idx++)
         {
-          if (std::abs(q_err[idx]) < parameters_.des_precision * 0.5 / static_cast<double>(nq_))
+          if (std::abs(q_err[idx]) < parameters_.des_precision * 0.7)
           {
-            integrated_q_err_[idx] = 0.0;
             q_err[idx] = 0.0;
           }
         }
@@ -286,17 +281,9 @@ namespace joint_trajectory_publisher
       }
     }
 
-    void publish_goal_base_pose(const std::vector<double> &base_pose)
+    void publish_goal_base_pose(const Eigen::VectorXd &base_pose)
     {
-      geometry_msgs::msg::PoseStamped pose_msg;
-      pose_msg.header.frame_id = "odom";
-      pose_msg.pose.position.x = base_pose[0];
-      pose_msg.pose.position.y = base_pose[1];
-      pose_msg.pose.position.z = 0.0;
-      pose_msg.pose.orientation.x = 0.0;
-      pose_msg.pose.orientation.y = 0.0;
-      pose_msg.pose.orientation.z = 0.0;
-      pose_msg.pose.orientation.w = 1.0;
+      geometry_msgs::msg::PoseStamped pose_msg = base_pose_to_pose_msg(base_pose);
       pose_publisher_->publish(pose_msg);
     }
 
@@ -321,8 +308,8 @@ namespace joint_trajectory_publisher
 
     double time = 0.;
     int nq_ = 5;
-    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
-    std::vector<double> base_pose_ = {0.0, 0.0};
+    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_),
+                               base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
@@ -330,7 +317,6 @@ namespace joint_trajectory_publisher
     joint_trajectory_publisher::Params parameters_;
 
     std::vector<Eigen::VectorXd> q_waypoints;
-    bool goal_base_pose_published_ = false;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
@@ -345,7 +331,6 @@ namespace joint_trajectory_publisher
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     PlannerManager planner_manager;
-    std::vector<std::tuple<ActionType, double>> actions_ = {};
     std::string end_effector_name_ = "gripper_frame_link";
     std::thread trajectory_computing_thread_;
     bool ready = false, planner_ready_ = false;
