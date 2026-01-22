@@ -5,6 +5,11 @@ class QuinticPolynom
 {
 public:
     QuinticPolynom() {}
+
+    void set_motion_planning_time_coeff(const double &motion_planning_time_coeff)
+    {
+        motion_planning_time_coeff_ = motion_planning_time_coeff;
+    }
     void set_plan(const Eigen::VectorXd &q_start, const std::vector<Eigen::VectorXd> &q_waypoints)
     {
         q_waypoints_.clear();
@@ -25,7 +30,7 @@ public:
             total_dist += dist_to_next_goal;
             previous_q = q_goal;
         }
-        traj_duration_ = total_dist * 1.3;
+        traj_duration_ = total_dist * motion_planning_time_coeff_;
         if (q_waypoints.size() == 2)
         {
             traj_duration_ *= 1.2;
@@ -86,7 +91,8 @@ public:
         return q;
     }
 
-    double traj_duration(){
+    double traj_duration()
+    {
         return traj_duration_;
     }
 
@@ -106,5 +112,5 @@ private:
     std::vector<double> waypoints_start_time_, waypoints_end_time_;
     std::vector<std::vector<double>> waypoints_traj_coeffs_;
     Eigen::VectorXd q_start_;
-    double traj_duration_;
+    double traj_duration_, motion_planning_time_coeff_;
 };

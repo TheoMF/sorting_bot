@@ -33,6 +33,18 @@ joint_trajectory_publisher:
     type: double
     default_value: 100.0
     description: "Rate of node in hertz."
+  use_genetic_algo:
+    type: bool
+    default_value: true
+    description: "Wether or not we use genetic algorithm if IK didn't converge."
+  motion_planning_time_coeff:
+    type: double
+    default_value: 1.0
+    description: "Coefficient for the total length of motion planning time."
+  grasping_object_distance :
+    type: double
+    default_value: 0.25
+    description: "Ideal distance to the object while grasping it."
   integration_coeff:
     type: double
     default_value: 0.2
