@@ -288,8 +288,9 @@ namespace joint_trajectory_publisher
         if (planner_manager.trajectory_ready())
         {
           current_action_str = "traj ready id " + std::to_string(std::get<1>(action));
-          Eigen::VectorXd q_plan = planner_manager.get_configuration_at_t();
-          q_traj_ = q_plan;
+          std::tuple<Eigen::VectorXd, Eigen::VectorXd> traj_value = planner_manager.get_traj_value_at_t();
+          q_traj_ = std::get<0>(traj_value);
+          q_dot_traj_ = std::get<1>(traj_value);
         }
         else
         {
@@ -378,15 +379,16 @@ namespace joint_trajectory_publisher
       joint_trajectory_msg.joint_names = parameters_.joint_names;
       trajectory_msgs::msg::JointTrajectoryPoint curr_point;
       std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
+      std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
       curr_point.positions = q_ref_vec;
-      curr_point.velocities = {0.0, 0.0, 0.0, 0.0, 0.0};
+      curr_point.velocities = q_dot_ref_vec;
 
       joint_trajectory_msg.points = {curr_point};
       publisher_->publish(joint_trajectory_msg);
     }
 
     int nq_ = 5;
-    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_),
+    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.

@@ -91,9 +91,9 @@ public:
     quintic_polynom_.set_plan(q_start, q_waypoints);
   }
 
-  Eigen::VectorXd get_configuration_at_t(const double &time)
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd> get_traj_value_at_t(const double &time)
   {
-    return quintic_polynom_.get_configuration_at_t(time);
+    return quintic_polynom_.get_traj_value_at_t(time);
   }
 
   double get_traj_duration()

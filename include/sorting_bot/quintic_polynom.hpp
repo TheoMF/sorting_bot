@@ -16,7 +16,6 @@ public:
         waypoints_traj_duration_.clear();
         waypoints_start_time_.clear();
         waypoints_end_time_.clear();
-        waypoints_traj_coeffs_.clear();
         q_start_ = q_start;
         q_waypoints_ = q_waypoints;
 
@@ -47,48 +46,51 @@ public:
             waypoints_traj_duration_.push_back(waypoint_traj_duration);
             waypoints_start_time_.push_back(start_time);
             waypoints_end_time_.push_back(start_time + waypoint_traj_duration);
-            std::vector<double> waypoint_traj_coeffs;
-            waypoint_traj_coeffs.push_back(1. / (waypoint_traj_duration * (1. - 2.5 * waypoint_traj_duration + 5. * std::pow(waypoint_traj_duration, 2) / 3.)));
-            waypoint_traj_coeffs.push_back(waypoint_traj_coeffs[0] * -2.5 * waypoint_traj_duration);
-            waypoint_traj_coeffs.push_back(waypoint_traj_coeffs[0] * 5. * std::pow(waypoint_traj_duration, 2) / 3.);
-            waypoints_traj_coeffs_.push_back(waypoint_traj_coeffs);
             start_time += waypoint_traj_duration;
         }
 
         is_initialized_ = true;
     }
 
-    Eigen::VectorXd get_configuration_at_t(const double &time)
+    int get_current_waypoint_idx(const double &time)
     {
-        if (time <= 0.)
-            return q_start_;
-        if (time >= traj_duration_)
-            return q_waypoints_.back();
-        Eigen::Matrix<double, 5, 1> q_init, q_goal;
         int current_waypoint_idx = -1;
         for (int waypoint_idx = 0; waypoint_idx < waypoints_traj_duration_.size(); waypoint_idx++)
         {
             if (time >= waypoints_start_time_[waypoint_idx] && time < waypoints_end_time_[waypoint_idx])
             {
-                if (waypoint_idx == 0)
-                    q_init = q_start_;
-                else
-                    q_init = q_waypoints_[waypoint_idx - 1];
-                q_goal = q_waypoints_[waypoint_idx];
+
                 current_waypoint_idx = waypoint_idx;
             }
         }
+        return current_waypoint_idx;
+    }
+
+    std::tuple<Eigen::VectorXd, Eigen::VectorXd> get_traj_value_at_t(const double &time)
+    {
+        if (time <= 0.)
+            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_));
+        if (time >= traj_duration_)
+            return std::make_tuple(q_waypoints_.back(), Eigen::VectorXd::Zero(nq_));
+        int current_waypoint_idx = get_current_waypoint_idx(time);
         if (current_waypoint_idx == -1)
-        {
-            return q_start_;
-        }
-        std::vector<double> traj_coeffs = waypoints_traj_coeffs_[current_waypoint_idx];
-        Eigen::Matrix<double, 5, 1> q = q_init;
+            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_));
+        Eigen::VectorXd q_init, q_goal;
+        if (current_waypoint_idx == 0)
+            q_init = q_start_;
+        else
+            q_init = q_waypoints_[current_waypoint_idx - 1];
+        q_goal = q_waypoints_[current_waypoint_idx];
+        Eigen::VectorXd q = Eigen::VectorXd::Zero(nq_), q_dot = Eigen::VectorXd::Zero(nq_);
+        double time_scale = (time - waypoints_start_time_[current_waypoint_idx]) / (waypoints_end_time_[current_waypoint_idx] - waypoints_start_time_[current_waypoint_idx]);
+        double pose_polynom_val = polynom_coeffs_[0] * std::pow(time_scale, 3) + polynom_coeffs_[1] * std::pow(time_scale, 4) + polynom_coeffs_[2] * std::pow(time_scale, 5);
+        double vel_polynom_val = 3. * polynom_coeffs_[0] * std::pow(time_scale, 2) + 4. * polynom_coeffs_[1] * std::pow(time_scale, 3) + 5. * polynom_coeffs_[2] * std::pow(time_scale, 4);
         for (int joint_idx = 0; joint_idx < 5; joint_idx++)
         {
-            q[joint_idx] += (traj_coeffs[0] + traj_coeffs[1] + traj_coeffs[2]) * (time - waypoints_start_time_[current_waypoint_idx]) * (q_goal[joint_idx] - q_init[joint_idx]);
+            q[joint_idx] = q_init[joint_idx] + pose_polynom_val * (q_goal[joint_idx] - q_init[joint_idx]);
+            q_dot[joint_idx] = vel_polynom_val * (q_goal[joint_idx] - q_init[joint_idx]);
         }
-        return q;
+        return std::make_tuple(q, q_dot);
     }
 
     double traj_duration()
@@ -105,12 +107,12 @@ public:
 
 private:
     bool is_initialized_ = false;
-    int nq_;
+    int nq_ = 5;
 
     // Quintic trajectory attributes
     std::vector<double> waypoints_traj_duration_;
     std::vector<double> waypoints_start_time_, waypoints_end_time_;
-    std::vector<std::vector<double>> waypoints_traj_coeffs_;
+    Eigen::Vector3d polynom_coeffs_ = Eigen::Vector3d(10.0, -15.0, 6.0);
     Eigen::VectorXd q_start_;
     double traj_duration_, motion_planning_time_coeff_;
 };

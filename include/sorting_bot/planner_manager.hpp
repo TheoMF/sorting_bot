@@ -420,7 +420,7 @@ public:
     }
     std::tuple<ActionType, double> action = actions_[0];
     ActionType action_type = std::get<0>(action);
-    if (action != FOLLOW_TRAJ || trajectory_ready_)
+    if (action_type != FOLLOW_TRAJ || trajectory_ready_)
       time_ += 0.01;
   }
 
@@ -488,10 +488,9 @@ public:
     std::cout << "finished setting traj" << std::endl;
   }
 
-  Eigen::VectorXd get_configuration_at_t()
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd> get_traj_value_at_t()
   {
-    Eigen::VectorXd q = motion_planner.get_configuration_at_t(time_);
-    return q;
+    return motion_planner.get_traj_value_at_t(time_);
   }
 
   bool trajectory_ready()
