@@ -57,6 +57,11 @@ joint_trajectory_publisher:
     type: string_array
     default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
     description: "Joint names of the robot."
+  in_object_translation_grasp:
+    type: double_array
+    description: "Translation from object frame to grasping frame."
+    validation:
+      not_empty<>: []
   inverse_kin:
     eps:
       type: double

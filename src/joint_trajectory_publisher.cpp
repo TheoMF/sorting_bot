@@ -4,12 +4,9 @@
 #include <unistd.h>
 
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp_action/rclcpp_action.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "tf2_ros/transform_listener.h"
-#include "tf2_ros/transform_broadcaster.h"
-#include "tf2_ros/buffer.h"
 #include "tf2/exceptions.h"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -333,12 +330,8 @@ namespace joint_trajectory_publisher
           }
         }
         integrated_q_err_ += 1.0 / parameters_.rate * q_err;
-        return q_traj_ + parameters_.integration_coeff * integrated_q_err_;
       }
-      else
-      {
-        return q_traj_;
-      }
+      return q_traj_ + parameters_.integration_coeff * integrated_q_err_;
     }
 
     void publish_goal_base_poses(const std::vector<Eigen::VectorXd> &base_poses)
