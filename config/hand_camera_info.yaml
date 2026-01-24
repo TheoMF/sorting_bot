@@ -4,14 +4,14 @@ camera_name: innomaker_camera
 camera_matrix:
   rows: 3
   cols: 3
-  data: [540.17087,   0.     , 322.77125,
-           0.     , 541.21713, 270.32487,
+  data: [549.39994,   0.     , 327.70965,
+           0.     , 549.048  , 262.5427 ,
            0.     ,   0.     ,   1.     ]
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
   cols: 5
-  data: [-0.420764, 0.173917, -0.003081, 0.002233, 0.000000]
+  data: [-0.419497, 0.158004, 0.000336, 0.000127, 0.000000]
 rectification_matrix:
   rows: 3
   cols: 3
@@ -21,6 +21,6 @@ rectification_matrix:
 projection_matrix:
   rows: 3
   cols: 4
-  data: [447.72339,   0.     , 326.02802,   0.     ,
-           0.     , 489.41058, 274.69909,   0.     ,
+  data: [456.10022,   0.     , 330.78671,   0.     ,
+           0.     , 497.75986, 266.87364,   0.     ,
            0.     ,   0.     ,   1.     ,   0.     ]

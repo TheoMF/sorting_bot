@@ -26,7 +26,7 @@ def launch_setup(
         [
             FindPackageShare("sorting_bot"),
             "config",
-            "param_camera.yaml",
+            "param_hand_camera.yaml",
         ]
     )
     container = ComposableNodeContainer(

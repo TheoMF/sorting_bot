@@ -8,8 +8,8 @@
       av_device_format: "YUV422P"
       image_width: 640
       image_height: 480
-      camera_name: "innomaker_camera"
-      camera_info_url: "file:///root/ros2_ws/src/sorting_bot/config/camera_info.yaml"
+      camera_name: "hand_camera"
+      camera_info_url: "file:///home/gepetto/ros2_ws/src/repos/sorting_bot/config/hand_camera_info.yaml"
       brightness: -1
       contrast: -1
       saturation: -1
