@@ -30,14 +30,7 @@ public:
             previous_q = q_goal;
         }
         traj_duration_ = total_dist * motion_planning_time_coeff_;
-        if (q_waypoints.size() == 2)
-        {
-            traj_duration_ *= 1.2;
-        }
-        if (q_waypoints.size() == 3)
-        {
-            traj_duration_ *= 1.4;
-        }
+        traj_duration_ += 0.4 * q_waypoints.size();
 
         double start_time = 0.;
         for (double &dist_to_next_goal : dist_to_next_goals)

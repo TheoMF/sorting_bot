@@ -20,4 +20,4 @@
         tag:
             ids: [0, 1, 2, 3, 4] # tag ID
             frames: [cardboard,plastic, glass, metal, box] # optional frame name
-            sizes: [0.027, 0.027, 0.027, 0.027,0.075] # optional tag-specific edge size
+            sizes: [0.027, 0.027, 0.027, 0.027,0.032] # optional tag-specific edge size

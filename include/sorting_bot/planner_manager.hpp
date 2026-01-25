@@ -170,7 +170,7 @@ public:
     bool found_transform = false;
     try
     {
-      in_world_M_box_ = get_in_base_M_object(parent_frame, box_frame);
+      in_world_M_box_ = get_most_recent_transform(parent_frame, box_frame);
       found_transform = true;
       std::cout << "found box  " << std::endl;
     }
@@ -305,13 +305,13 @@ public:
     case SEARCHING_OBJECTS:
       actions.push_back(std::make_tuple(MOVE_JAW, -0.4));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      // if (robot_name_ == "LeKiwi")
-      //   actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
+      if (robot_name_ == "LeKiwi")
+        actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(WAIT, 1.0));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
-      // actions.push_back(std::make_tuple(MOVE_BASE, 2.0));
+      actions.push_back(std::make_tuple(MOVE_BASE, 2.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       actions.push_back(std::make_tuple(WAIT, 2.0));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
@@ -321,18 +321,18 @@ public:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
       actions.push_back(std::make_tuple(MOVE_JAW, -0.4));
-      actions.push_back(std::make_tuple(WAIT, 10000.));
+      actions.push_back(std::make_tuple(WAIT, 0.4));
       break;
     case SEARCHING_BOX:
-      // actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
+      actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
-      // actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
+      actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 4.));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
-      actions.push_back(std::make_tuple(WAIT, 10000.));
+      actions.push_back(std::make_tuple(WAIT, 0.5));
       break;
     }
     return actions;
@@ -495,8 +495,8 @@ public:
       sec_transform = base_link_M_compartment;
       base_link_M_compartment.rotation() = ideal_rot_quat_.toRotationMatrix();
       double y_angle = std::atan2(base_link_M_compartment.translation()[1], base_link_M_compartment.translation()[0]);
-      Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(y_angle, Eigen::Vector3d::UnitZ());
-      base_link_M_compartment.rotation() *= y_angle_axis_rot.toRotationMatrix();
+      Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(y_angle, Eigen::Vector3d::UnitY());
+      base_link_M_compartment.rotation() = base_link_M_compartment.rotation() * y_angle_axis_rot.toRotationMatrix();
       new_transform = base_link_M_compartment;
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, base_link_M_compartment);
       // std::vector<double> q_placing_vec = q_types[object_idx];

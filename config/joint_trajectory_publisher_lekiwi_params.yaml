@@ -19,7 +19,7 @@ joint_trajectory_publisher:
     use_genetic_algo: false
     motion_planning_time_coeff: 1.7
     grasping_object_distance : 0.25
-    integration_coeff: 1.5
+    integration_coeff: 1.3
     des_precision : 0.02
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
     in_object_translation_grasp : [0.05, 0.04, 0.01]
