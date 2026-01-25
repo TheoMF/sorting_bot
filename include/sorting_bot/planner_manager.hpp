@@ -311,7 +311,6 @@ public:
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
-      actions.push_back(std::make_tuple(MOVE_BASE, 2.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       actions.push_back(std::make_tuple(WAIT, 2.0));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
@@ -549,7 +548,8 @@ private:
   std::vector<Eigen::VectorXd> q_waypoints = {}, q_inits_ = {}, searching_box_qs_ = {}, searching_box_base_waypoints_ = {};
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
   pinocchio::SE3 in_world_M_box_ = pinocchio::SE3::Identity(), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
-  std::vector<std::vector<double>> q_inits_vec_ = {{0.0, -0.776194, 0.170272, 1.475690, 1.262466}, {-0.8, -0.776194, 0.170272, 1.475690, 1.262466}, {0.8, -0.776194, 0.170272, 1.475690, 1.262466}, {0.0, -1.814699, 1.656699, 1.313088, 1.262466}};
+
+  std::vector<std::vector<double>> q_inits_vec_ = {{-0.14266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.66266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.94266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.142660, -1.814699, 1.656699, 1.313088, 1.262466}};
   std::vector<std::vector<double>> searching_box_qs_vec_ = {{-0.0, -1.796292, 1.561592, 0.368155, 1.475690}, {-0.8, -1.796292, 1.561592, 0.368155, 1.475690}, {0.8, -1.796292, 1.561592, 0.368155, 1.475690}};
   pinocchio::SE3::Quaternion ideal_rot_quat_ = Eigen::Quaternion(0.50762351, -0.56451828, 0.48617564, -0.43581315); // 0.583, -0.500, 0.549, -0.330
   std::vector<std::vector<double>> q_types = {};
