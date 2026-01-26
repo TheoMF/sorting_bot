@@ -90,6 +90,8 @@ namespace joint_trajectory_publisher
         q_vec.push_back(msg.position[joint_idx]);
       }
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
+      if (q_ref_ == Eigen::VectorXd::Zero(nq_))
+        q_ref_ = current_q;
       ready = true;
       RCLCPP_DEBUG(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
     }
@@ -234,7 +236,8 @@ namespace joint_trajectory_publisher
     {
       // Update state
       bool action_is_finished = false;
-      planner_manager.update_state(current_q, base_pose_, nav_result_);
+
+      planner_manager.update_state(current_q, q_ref_, base_pose_, nav_result_);
       std::tuple<ActionType, double> action = planner_manager.get_current_action();
       StateMachine planner_state = planner_manager.get_state();
       RCLCPP_DEBUG(this->get_logger(), "Planner state : %s", std::to_string(planner_state).c_str());
@@ -274,6 +277,21 @@ namespace joint_trajectory_publisher
         }
         break;
       }
+      case SET_MOVE_BASE_Q:
+      {
+        if (planner_manager.trajectory_ready())
+        {
+          current_action_str = "set_move_base_q ready id " + std::to_string(std::get<1>(action));
+          std::tuple<Eigen::VectorXd, Eigen::VectorXd> traj_value = planner_manager.get_traj_value_at_t();
+          q_traj_ = std::get<0>(traj_value);
+          q_dot_traj_ = std::get<1>(traj_value);
+        }
+        else
+        {
+          current_action_str = "set_move_base_q not ready id " + std::to_string(std::get<1>(action));
+        }
+        break;
+      }
       case WAIT:
       {
         current_action_str = "wait " + std::to_string(std::get<1>(action)) + "s";
@@ -302,6 +320,8 @@ namespace joint_trajectory_publisher
       if (action_type != last_action_)
       {
         last_action_ = action_type;
+        if (action_type == FOLLOW_TRAJ)
+          integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
         RCLCPP_INFO(this->get_logger(), "start new action %s", current_action_str.c_str());
       }
       planner_manager.update_actions_status(nav_result_);
@@ -366,12 +386,11 @@ namespace joint_trajectory_publisher
       if (ready == false || planner_ready_ == false)
         return;
       update_planning();
-      Eigen::VectorXd q_ref = compute_q_ref();
-
+      q_ref_ = compute_q_ref();
       trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
       joint_trajectory_msg.joint_names = parameters_.joint_names;
       trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-      std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
+      std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
       std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
       curr_point.positions = q_ref_vec;
       curr_point.velocities = q_dot_ref_vec;
@@ -381,7 +400,7 @@ namespace joint_trajectory_publisher
     }
 
     int nq_ = 5;
-    Eigen::VectorXd current_q, q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
+    Eigen::VectorXd current_q, q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.

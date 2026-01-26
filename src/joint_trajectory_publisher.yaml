@@ -62,6 +62,11 @@ joint_trajectory_publisher:
     description: "Translation from object frame to grasping frame."
     validation:
       not_empty<>: []
+  q_base_moving:
+      type: double_array
+      description: "Configuration while base is moving."
+      validation:
+        not_empty<>: []
   inverse_kin:
     eps:
       type: double
