@@ -221,7 +221,14 @@ public:
     if (std::abs(base_pose_[1] < 0.15))
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
-      searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], 0., -M_PI_2), Eigen::Vector3d(base_pose_[0], 0., M_PI)};
+      searching_box_base_waypoints_ = {
+          Eigen::Vector3d(base_pose_[0], 0., -M_PI_2),
+          Eigen::Vector3d(base_pose_[0], 0., M_PI),
+      };
+    if (base_pose_[0] > 0.2)
+    {
+      searching_box_base_waypoints_.push_back(Eigen::Vector3d(0.2, 0., M_PI));
+    }
   }
 
   std::vector<Eigen::VectorXd> get_base_goal_waypoints()
@@ -305,12 +312,12 @@ public:
       actions.push_back(std::make_tuple(MOVE_JAW, -0.4));
       actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      actions.push_back(std::make_tuple(WAIT, 1.0));
+      actions.push_back(std::make_tuple(WAIT, 0.5));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
-      actions.push_back(std::make_tuple(WAIT, 2.0));
+      actions.push_back(std::make_tuple(WAIT, 1.0));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       break;
@@ -323,6 +330,7 @@ public:
     case SEARCHING_BOX:
       actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
       actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
+      actions.push_back(std::make_tuple(WAIT, 1.0));
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
@@ -436,7 +444,6 @@ public:
   {
     std::tuple<ActionType, double> action = actions_[0];
     ActionType action_type = std::get<0>(action);
-    std::cout << "current ac int " << static_cast<int>(action_type) << std::endl;
     if (action_type == SET_MOVE_BASE_Q)
     {
       q_waypoints = {q_base_moving_};
