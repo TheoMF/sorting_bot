@@ -17,16 +17,16 @@ joint_trajectory_publisher:
       q_placing: [-1.497165, -0.055223, -0.504680, 1.204175, 1.670505]
     rate: 100.0
     use_genetic_algo: false
-    motion_planning_time_coeff: 1.9
-    grasping_object_distance : 0.25
-    integration_coeff: 1.9
+    motion_planning_time_coeff: 2.3
+    box_dist_while_placing : 0.25
+    integration_coeff: 2.1
     des_precision : 0.02
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    in_object_translation_grasp : [0.05, 0.04, 0.01]
+    in_object_translation_grasp : [0.045, 0.04, 0.0]
     q_base_moving : [-0.142660, -1.814699, 1.656699, 1.313088, 1.262466]
     inverse_kin:
       eps: 0.001
-      max_iter: 10000
+      max_iter: 1000
       dt: 0.1
       damp: 0.000001
       error_weights : [1.0, 1.0, 1.0, 0.01, 0.001, 1.0]

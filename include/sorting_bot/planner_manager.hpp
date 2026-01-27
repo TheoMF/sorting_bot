@@ -55,7 +55,7 @@ public:
     motion_planner.initialize(urdf, ee_frame_name, params);
     des_precision_ = params.des_precision;
     robot_name_ = params.robot_name;
-    grasping_object_distance_ = params.grasping_object_distance;
+    box_dist_while_placing_ = params.box_dist_while_placing;
     in_object_translation_grasp_ = Eigen::Map<Eigen::VectorXd>(params.in_object_translation_grasp.data(), params.in_object_translation_grasp.size());
     q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
     q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
@@ -114,6 +114,23 @@ public:
     tf_broadcaster_->sendTransform(transform_msg);
   }
 
+  pinocchio::SE3 get_in_base_M_gripper(const pinocchio::SE3 &in_base_M_object)
+  {
+    pinocchio::SE3 in_base_M_gripper = in_base_M_object;
+    in_base_M_gripper.rotation() = ideal_rot_quat_.toRotationMatrix();
+    first_transform = in_base_M_gripper;
+
+    double y_angle = std::atan2(in_base_M_gripper.translation()[1], in_base_M_gripper.translation()[0]);
+    Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(-y_angle, Eigen::Vector3d::UnitY());
+    in_base_M_gripper.rotation() = in_base_M_gripper.rotation() * y_angle_axis_rot.toRotationMatrix();
+    sec_transform = in_base_M_gripper;
+
+    const Eigen::Vector3d in_base_trans = Eigen::Vector3d(in_object_translation_grasp_);
+    Eigen::Vector3d in_des_trans = in_base_M_gripper.rotation() * in_base_trans;
+    in_base_M_gripper.translation() += in_des_trans;
+    return in_base_M_gripper;
+  }
+
   bool find_next_object_to_grasp_transform()
   {
     std::string parent_frame = "base_footprint";
@@ -135,22 +152,11 @@ public:
     {
       try
       {
-        pinocchio::SE3 des_transform = get_most_recent_transform(parent_frame, object_frame);
-        des_transform.rotation() = ideal_rot_quat_.toRotationMatrix();
+        pinocchio::SE3 in_base_M_object = get_most_recent_transform(parent_frame, object_frame);
+        pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_object);
         found_transform = true;
-        first_transform = des_transform;
-
-        double y_angle = std::atan2(des_transform.translation()[1], des_transform.translation()[0]);
-        Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(-y_angle, Eigen::Vector3d::UnitY());
-        des_transform.rotation() = des_transform.rotation() * y_angle_axis_rot.toRotationMatrix();
-        sec_transform = des_transform;
-
-        const Eigen::Vector3d in_base_trans = Eigen::Vector3d(in_object_translation_grasp_);
-        Eigen::Vector3d in_des_trans = des_transform.rotation() * in_base_trans;
-        des_transform.translation() += in_des_trans;
-
         // publish_transform(des_transform, "base_link", "desired_pose");
-        current_target_ = make_tuple(object_frame, des_transform);
+        current_target_ = make_tuple(object_frame, in_base_M_gripper);
         auto val = get_base_goal_waypoints();
         objects_done_.push_back(object_frame);
         std::cout << "found object  " << object_frame.c_str() << std::endl;
@@ -167,11 +173,11 @@ public:
   bool find_box_transform()
   {
 
-    std::string parent_frame = "odom", box_frame = "box";
+    std::string parent_frame = "base_footprint", box_frame = "box";
     bool found_transform = false;
     try
     {
-      in_world_M_box_ = get_most_recent_transform(parent_frame, box_frame);
+      in_base_M_box_ = get_most_recent_transform(parent_frame, box_frame);
       found_transform = true;
       std::cout << "found box  " << std::endl;
     }
@@ -195,7 +201,10 @@ public:
   {
     // If we didn't found the box, restart state actions.
     if (!find_box_transform())
+    {
       current_state_action_were_sent_ = false;
+      actions_ = {};
+    }
   }
 
   bool goal_pose_achieved(const Eigen::VectorXd &q)
@@ -235,25 +244,20 @@ public:
   {
     if (state_ == SEARCHING_OBJECTS)
       return base_poses_waypoints_vec_[search_obj_base_waypoints_vec_idx_];
-    else if (state_ == GOING_TO_GRASP_POSE)
-    {
-      pinocchio::SE3 in_base_M_object = std::get<1>(current_target_);
-      pinocchio::SE3 in_world_M_base = get_most_recent_transform("odom", "base_footprint");
-      pinocchio::SE3 in_world_M_object = in_world_M_base * in_base_M_object;
-
-      double yaw_angle = std::atan2(in_base_M_object.translation()[1], in_base_M_object.translation()[0]);
-      std::cout << " current pose " << in_world_M_base.translation() << std::endl;
-      std::cout << " object pose " << in_world_M_object.translation() << std::endl;
-      std::cout << "yaw angle " << yaw_angle << std::endl;
-      Eigen::Vector3d des_in_world_M_base(in_world_M_object.translation()[0] + std::cos(M_PI + yaw_angle) * grasping_object_distance_,
-                                          in_world_M_object.translation()[1] + std::sin(M_PI + yaw_angle) * grasping_object_distance_,
-                                          base_pose_[2] + yaw_angle);
-      return {des_in_world_M_base};
-    }
     else if (state_ == SEARCHING_BOX)
       return searching_box_base_waypoints_;
     else if (state_ == PLACING)
-      return {Eigen::Vector3d(0.22 + in_world_M_box_.translation()[0], in_world_M_box_.translation()[1], M_PI)};
+    {
+      if (in_base_M_box_.translation().norm() < box_dist_while_placing_)
+        return {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
+      else
+      {
+        pinocchio::SE3 in_world_M_base = get_most_recent_transform("odom", "base_footprint");
+        pinocchio::SE3 in_world_M_box_ = in_world_M_base * in_base_M_box_;
+        return {Eigen::Vector3d(box_dist_while_placing_ + in_world_M_box_.translation()[0], in_world_M_box_.translation()[1], M_PI)};
+      }
+    }
+
     std::cout << " should never happen" << std::endl;
     return {Eigen::Vector3d(0.0, 0., 0.0)};
   }
@@ -309,7 +313,7 @@ public:
     switch (state_)
     {
     case SEARCHING_OBJECTS:
-      actions.push_back(std::make_tuple(MOVE_JAW, -0.4));
+      actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
       actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
@@ -324,7 +328,7 @@ public:
     case GRASPING:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
-      actions.push_back(std::make_tuple(MOVE_JAW, -0.4));
+      actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
       actions.push_back(std::make_tuple(WAIT, 0.4));
       break;
     case SEARCHING_BOX:
@@ -334,8 +338,9 @@ public:
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
-      actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 3.0));
       actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
+      actions.push_back(std::make_tuple(WAIT, 1.0));
+      actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 4.));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       actions.push_back(std::make_tuple(WAIT, 0.5));
@@ -481,7 +486,9 @@ public:
       std::cout << "Object IK res : \n"
                 << q_goal << std::endl;
       pinocchio::SE3 above_object_des_transform = des_transform;
-      above_object_des_transform.translation().z() += 0.06;
+      Eigen::VectorXd translation = Eigen::Vector3d(0., -0.06, -0.03);
+      translation = above_object_des_transform.rotation() * translation;
+      above_object_des_transform.translation() += translation;
       q_waypoint_above_object_ = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
       q_waypoints = {q_waypoint_above_object_, q_goal};
       Eigen::Vector3d des_trans = des_transform.translation();
@@ -494,24 +501,16 @@ public:
       int object_idx = it - objects_frame_.begin();
       std::cout << "object idx " << object_idx << std::endl;
       pinocchio::SE3 in_box_M_compartment = in_box_M_compartments_[object_idx];
-      pinocchio::SE3 in_base_link_M_world = get_most_recent_transform("base_footprint", "odom");
-      pinocchio::SE3 base_link_M_compartment = in_base_link_M_world * in_world_M_box_ * in_box_M_compartment;
-      std::cout << "in_base_link_M_world \n"
-                << in_base_link_M_world << "in_world_M_box_ \n"
-                << in_world_M_box_ << " y_anglein_box_M_compartment \n"
+      pinocchio::SE3 in_base_M_compartment = in_base_M_box_ * in_box_M_compartment;
+      std::cout << "in_base_M_box_ \n"
+                << in_base_M_box_ << " in_box_M_compartment \n"
                 << in_box_M_compartment << " base_link_M_compartment\n"
-                << base_link_M_compartment << std::endl;
-      first_transform = in_base_link_M_world * in_world_M_box_;
-      sec_transform = base_link_M_compartment;
-      base_link_M_compartment.rotation() = ideal_rot_quat_.toRotationMatrix();
-      double y_angle = std::atan2(base_link_M_compartment.translation()[1], base_link_M_compartment.translation()[0]);
-      Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(y_angle, Eigen::Vector3d::UnitY());
-      base_link_M_compartment.rotation() = base_link_M_compartment.rotation() * y_angle_axis_rot.toRotationMatrix();
-      new_transform = base_link_M_compartment;
-      Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, base_link_M_compartment);
+                << in_base_M_compartment << std::endl;
+      pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment);
+      Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
       // std::vector<double> q_placing_vec = q_types[object_idx];
       // Eigen::VectorXd q_goal = Eigen::Map<Eigen::VectorXd>(q_placing_vec.data(), q_placing_vec.size());
-      q_waypoints = {q_waypoint_up_, q_above_compartment};
+      q_waypoints = {q_above_compartment};
     }
     else
     {
@@ -554,11 +553,11 @@ private:
   std::vector<std::tuple<ActionType, double>> actions_ = {};
   std::string robot_name_;
   bool trajectory_ready_ = false, current_state_action_were_sent_ = false, goal_base_pose_published_ = false, start_new_action_ = true;
-  double des_precision_, grasping_object_distance_, time_ = 0.;
+  double des_precision_, box_dist_while_placing_, time_ = 0.;
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {}, q_inits_ = {}, searching_box_base_waypoints_ = {};
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
-  pinocchio::SE3 in_world_M_box_ = pinocchio::SE3::Identity(), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
+  pinocchio::SE3 in_base_M_box_ = pinocchio::SE3::Identity(), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
 
   std::vector<std::vector<double>> q_inits_vec_ = {{-0.14266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.66266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.94266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion ideal_rot_quat_ = Eigen::Quaternion(0.50762351, -0.56451828, 0.48617564, -0.43581315); // 0.583, -0.500, 0.549, -0.330

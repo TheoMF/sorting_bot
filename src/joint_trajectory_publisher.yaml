@@ -41,10 +41,10 @@ joint_trajectory_publisher:
     type: double
     default_value: 1.0
     description: "Coefficient for the total length of motion planning time."
-  grasping_object_distance :
+  box_dist_while_placing :
     type: double
     default_value: 0.25
-    description: "Ideal distance to the object while grasping it."
+    description: "Ideal distance to the box while placing an object in it."
   integration_coeff:
     type: double
     default_value: 0.2
