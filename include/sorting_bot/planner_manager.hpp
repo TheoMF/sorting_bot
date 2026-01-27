@@ -324,12 +324,13 @@ public:
       actions.push_back(std::make_tuple(WAIT, 1.0));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
+      actions.push_back(std::make_tuple(WAIT, 0.5));
       break;
     case GRASPING:
-      actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
+      actions.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
       actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
-      actions.push_back(std::make_tuple(WAIT, 0.4));
+      actions.push_back(std::make_tuple(WAIT, 1.0));
       break;
     case SEARCHING_BOX:
       actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));

@@ -41,9 +41,13 @@ private:
   void
   detection_pub_callback()
   {
-    std::vector<double> translation{0.3, 0.0, 0.05};
+    std::vector<double> translation{0.25, 0.1, 0.02};
     std::vector<double> rotation_quat{0., 1., 0., 0.};
-    publish_transform(translation, rotation_quat, "base_link", "cardboard");
+    publish_transform(translation, rotation_quat, "base_footprint", "cardboard");
+
+    std::vector<double> box_translation{-0.1, 0.0, 0.0};
+    std::vector<double> box_rotation_quat{0.5, 0.5, 0.5, 0.5};
+    publish_transform(box_translation, box_rotation_quat, "odom", "box");
   }
   rclcpp::TimerBase::SharedPtr timer_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

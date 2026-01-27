@@ -18,9 +18,9 @@ public:
     {
         for (int joint_idx = 0; joint_idx < model_ptr_->nq; joint_idx++)
         {
-            if (q[joint_idx] < model_ptr_->lowerPositionLimit[joint_idx])
+            if (q[joint_idx] < model_ptr_->lowerPositionLimit[joint_idx] + limit_margin)
                 q[joint_idx] = model_ptr_->lowerPositionLimit[joint_idx];
-            if (q[joint_idx] > model_ptr_->upperPositionLimit[joint_idx])
+            if (q[joint_idx] > model_ptr_->upperPositionLimit[joint_idx] - limit_margin)
                 q[joint_idx] = model_ptr_->upperPositionLimit[joint_idx];
         }
     }
@@ -31,5 +31,7 @@ protected:
     std::shared_ptr<pinocchio::Data> data_ptr_;
     int ee_frame_id_;
     int nq_;
+
+    double limit_margin = 0.01;
 };
 #endif

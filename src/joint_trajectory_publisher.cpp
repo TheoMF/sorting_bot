@@ -339,7 +339,7 @@ namespace joint_trajectory_publisher
       ActionType action_type = std::get<0>(action);
 
       // Add an integrator on every axis lacking precision if we follow a trajectory.
-      if (action_type == FOLLOW_TRAJ)
+      if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
       {
         Eigen::VectorXd q_err = q_traj_ - current_q;
         for (int idx = 0; idx < nq_; idx++)
@@ -387,16 +387,25 @@ namespace joint_trajectory_publisher
         return;
       update_planning();
       q_ref_ = compute_q_ref();
-      trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
-      joint_trajectory_msg.joint_names = parameters_.joint_names;
-      trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-      std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
-      std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
-      curr_point.positions = q_ref_vec;
-      curr_point.velocities = q_dot_ref_vec;
 
-      joint_trajectory_msg.points = {curr_point};
-      publisher_->publish(joint_trajectory_msg);
+      // Get current state
+      std::tuple<ActionType, double> action = planner_manager.get_current_action();
+      ActionType action_type = std::get<0>(action);
+
+      // Only publish trajectory references when needed.
+      if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
+      {
+        trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+        joint_trajectory_msg.joint_names = parameters_.joint_names;
+        trajectory_msgs::msg::JointTrajectoryPoint curr_point;
+        std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
+        std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
+        curr_point.positions = q_ref_vec;
+        curr_point.velocities = q_dot_ref_vec;
+
+        joint_trajectory_msg.points = {curr_point};
+        publisher_->publish(joint_trajectory_msg);
+      }
     }
 
     int nq_ = 5;
