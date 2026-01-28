@@ -65,8 +65,6 @@ public:
     q_inits_.push_back(q_base_moving_);
 
     objects_frame_ = params.objects_frame;
-    for (std::string &object_frame : params.objects_frame)
-      q_types.push_back(params.objects_frame_map.at(object_frame).q_placing);
   }
 
   pinocchio::SE3 transform_msg_to_SE3(const geometry_msgs::msg::Transform &transform)
@@ -314,7 +312,8 @@ public:
     {
     case SEARCHING_OBJECTS:
       actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
-      actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
+      if (robot_name_ == "LeKiwi")
+        actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
@@ -333,19 +332,26 @@ public:
       actions.push_back(std::make_tuple(WAIT, 1.0));
       break;
     case SEARCHING_BOX:
-      actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
-      actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
+      if (robot_name_ == "LeKiwi")
+      {
+        actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
+        actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
+      }
       actions.push_back(std::make_tuple(WAIT, 1.0));
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
-      actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
-      actions.push_back(std::make_tuple(WAIT, 1.0));
-      actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
+      if (robot_name_ == "LeKiwi")
+      {
+        actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
+        actions.push_back(std::make_tuple(WAIT, 1.0));
+        actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
+      }
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 4.));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       actions.push_back(std::make_tuple(WAIT, 0.5));
-      actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 1.0));
+      if (robot_name_ == "LeKiwi")
+        actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 1.0));
       break;
     }
     return actions;
@@ -400,10 +406,9 @@ public:
     }
   }
 
-  void update_state(const Eigen::VectorXd &q, const Eigen::VectorXd &q_ref, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result)
+  void update_state(const Eigen::VectorXd &q, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result)
   {
     q_ = q;
-    q_ref_ = q_ref;
     base_pose_ = base_pose;
     update_actions(nav_result);
     if (new_transform != pinocchio::SE3::Identity())
@@ -509,8 +514,6 @@ public:
                 << in_base_M_compartment << std::endl;
       pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment);
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
-      // std::vector<double> q_placing_vec = q_types[object_idx];
-      // Eigen::VectorXd q_goal = Eigen::Map<Eigen::VectorXd>(q_placing_vec.data(), q_placing_vec.size());
       q_waypoints = {q_above_compartment};
     }
     else
@@ -518,7 +521,7 @@ public:
       std::cout << "try to follow traj in unknown state, state idx is " << static_cast<int>(state_) << std::endl;
       q_waypoints = {q_};
     }
-    motion_planner.set_plan(q_ref_, q_waypoints);
+    motion_planner.set_plan(q_, q_waypoints);
     trajectory_ready_ = true;
     std::cout << "finished setting traj" << std::endl;
   }
@@ -546,7 +549,7 @@ public:
 
 private:
   int nq_ = 5;
-  Eigen::VectorXd q_, q_ref_, q_base_moving_, in_object_translation_grasp_;
+  Eigen::VectorXd q_, q_base_moving_, in_object_translation_grasp_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   enum StateMachine state_ = SEARCHING_OBJECTS;
@@ -562,8 +565,6 @@ private:
 
   std::vector<std::vector<double>> q_inits_vec_ = {{-0.14266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.66266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.94266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion ideal_rot_quat_ = Eigen::Quaternion(0.50762351, -0.56451828, 0.48617564, -0.43581315); // 0.583, -0.500, 0.549, -0.330
-  std::vector<std::vector<double>> q_types = {};
-  // std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.0, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.0, M_PI_2), Eigen::Vector3d(0.5, 0.5, M_PI_2)}, {Eigen::Vector3d(0.5, 0.5, M_PI), Eigen::Vector3d(0.0, 0.5, M_PI)}};
   std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.0, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.5, M_PI_2)}, {Eigen::Vector3d(0.0, 0.5, M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;
@@ -571,5 +572,3 @@ private:
   std::tuple<std::string, pinocchio::SE3> current_target_;
   Eigen::VectorXd q_waypoint_above_object_, base_pose_ = Eigen::VectorXd::Zero(3), q_waypoint_up_, q_init_;
 };
-//-0.56471753,  0.4825263 , -0.37284455,  0.55646449
-// 0.53676005, -0.58853859,  0.45401563, -0.40043172

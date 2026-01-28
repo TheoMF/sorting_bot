@@ -23,12 +23,6 @@ joint_trajectory_publisher:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]
     description: "Frame name of the objects in tf."
-  __map_objects_frame:
-    q_placing:
-      type: double_array
-      description: Placing configuration of the corresponding object.
-      validation:
-        not_empty<>: []
   rate:
     type: double
     default_value: 100.0
@@ -45,10 +39,11 @@ joint_trajectory_publisher:
     type: double
     default_value: 0.25
     description: "Ideal distance to the box while placing an object in it."
-  integration_coeff:
-    type: double
-    default_value: 0.2
-    description: "Integration coefficient used for error in configuration position."
+  integration_coeffs:
+    type: double_array
+    description: "Integration coefficients used for error in configuration position."
+    validation:
+        not_empty<>: []
   des_precision:
     type: double
     default_value: 0.005
@@ -57,6 +52,11 @@ joint_trajectory_publisher:
     type: string_array
     default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
     description: "Joint names of the robot."
+  friction_compensation:
+      type: double_array
+      description: "Compensation used in position reference for friction."
+      validation:
+        not_empty<>: []
   in_object_translation_grasp:
     type: double_array
     description: "Translation from object frame to grasping frame."

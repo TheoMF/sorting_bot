@@ -30,6 +30,7 @@ namespace joint_trajectory_publisher
         RCLCPP_ERROR(this->get_logger(), "Got issues loading the parameters.");
         return;
       }
+      friction_compensation_ = Eigen::Map<Eigen::VectorXd>(parameters_.friction_compensation.data(), parameters_.friction_compensation.size());
 
       // Joint trajectory publisher
       rclcpp::QoS joint_trajectory_qos_profile(10);
@@ -90,8 +91,6 @@ namespace joint_trajectory_publisher
         q_vec.push_back(msg.position[joint_idx]);
       }
       current_q = Eigen::Map<Eigen::VectorXd>(q_vec.data(), q_vec.size());
-      if (q_ref_ == Eigen::VectorXd::Zero(nq_))
-        q_ref_ = current_q;
       ready = true;
       RCLCPP_DEBUG(this->get_logger(), "current q %f %f %f %f %f", q_vec[0], q_vec[1], q_vec[2], q_vec[3], q_vec[4]);
     }
@@ -237,7 +236,7 @@ namespace joint_trajectory_publisher
       // Update state
       bool action_is_finished = false;
 
-      planner_manager.update_state(current_q, q_ref_, base_pose_, nav_result_);
+      planner_manager.update_state(current_q, base_pose_, nav_result_);
       std::tuple<ActionType, double> action = planner_manager.get_current_action();
       StateMachine planner_state = planner_manager.get_state();
       RCLCPP_DEBUG(this->get_logger(), "Planner state : %s", std::to_string(planner_state).c_str());
@@ -320,8 +319,6 @@ namespace joint_trajectory_publisher
       if (action_type != last_action_)
       {
         last_action_ = action_type;
-        if (action_type == FOLLOW_TRAJ)
-          integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
         RCLCPP_INFO(this->get_logger(), "start new action %s", current_action_str.c_str());
       }
       planner_manager.update_actions_status(nav_result_);
@@ -332,26 +329,33 @@ namespace joint_trajectory_publisher
         q_traj_ = current_q;
     }
 
+    double sign(const double &val)
+    {
+      if (val > 0.0)
+        return 1.0;
+      else if (val < 0.0)
+        return -1.0;
+      return 0.0;
+    }
+
     Eigen::VectorXd compute_q_ref()
     {
       // Get current state
       std::tuple<ActionType, double> action = planner_manager.get_current_action();
       ActionType action_type = std::get<0>(action);
-
+      Eigen::VectorXd q_ref = q_traj_;
       // Add an integrator on every axis lacking precision if we follow a trajectory.
       if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
       {
         Eigen::VectorXd q_err = q_traj_ - current_q;
         for (int idx = 0; idx < nq_; idx++)
         {
-          if (std::abs(q_err[idx]) < parameters_.des_precision * 0.7)
-          {
-            q_err[idx] = 0.0;
-          }
+          q_ref[idx] += sign(q_err[idx]) * friction_compensation_[idx];
+          if (std::abs(q_err[idx]) > parameters_.des_precision)
+            integrated_q_err_[idx] += parameters_.integration_coeffs[idx] / parameters_.rate * q_err[idx];
         }
-        integrated_q_err_ += 1.0 / parameters_.rate * q_err;
       }
-      return q_traj_ + parameters_.integration_coeff * integrated_q_err_;
+      return q_ref + integrated_q_err_;
     }
 
     void publish_goal_base_poses(const std::vector<Eigen::VectorXd> &base_poses)
@@ -410,7 +414,7 @@ namespace joint_trajectory_publisher
 
     int nq_ = 5;
     Eigen::VectorXd current_q, q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
-                               base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
+                               base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), friction_compensation_;
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>

@@ -7,21 +7,14 @@ joint_trajectory_publisher:
     joint_trajectory_topic: "/lekiwi_controller/joint_trajectory"
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
     objects_frame: ["glass", "cardboard", "metal", "plastic"]
-    glass:
-      q_placing: [-0.569107, -0.408039, -0.110447, 1.207243, 1.684311]
-    cardboard:
-      q_placing: [-0.929592, -0.078233, -0.033748, 0.362019, 1.684311]
-    metal:
-      q_placing: [-1.222583, -0.891243, 0.041417, 1.764078, 1.679709]
-    plastic:
-      q_placing: [-1.497165, -0.055223, -0.504680, 1.204175, 1.670505]
     rate: 100.0
     use_genetic_algo: false
     motion_planning_time_coeff: 2.3
     box_dist_while_placing : 0.25
-    integration_coeff: 2.1
-    des_precision : 0.02
+    integration_coeffs: [0.1, 0.1, 0.3, 0.0, 0.0]
+    des_precision : 0.025
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    friction_compensation: [0.01,0.01,0.01,0.0,0.0]
     in_object_translation_grasp : [0.027, 0.03, 0.01]
     q_base_moving : [-0.142660, -1.814699, 1.656699, 0.225495, 1.262466]
     inverse_kin:

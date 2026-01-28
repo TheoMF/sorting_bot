@@ -7,27 +7,26 @@ joint_trajectory_publisher:
     joint_trajectory_topic: "/so_100_arm_controller/joint_trajectory"
     gripper_command_topic: "/so_100_arm_gripper_controller/commands"
     objects_frame: ["glass", "cardboard", "metal", "plastic"]
-    glass:
-      q_placing: [-0.569107, -0.408039, -0.110447, 1.207243, 1.684311]
-    cardboard:
-      q_placing: [-0.929592, -0.078233, -0.033748, 0.362019, 1.684311]
-    metal:
-      q_placing: [-1.222583, -0.891243, 0.041417, 1.764078, 1.679709]
-    plastic:
-      q_placing: [-1.497165, -0.055223, -0.504680, 1.204175, 1.670505]
     rate: 100.0
-    integration_coeff: 0.8
+    use_genetic_algo: false
+    motion_planning_time_coeff: 2.3
+    box_dist_while_placing : 0.25
+    integration_coeff: 0.0
     des_precision : 0.02
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    friction_compensation: [0.01,0.01,0.05,0.0,0.0]
+    in_object_translation_grasp : [0.027, 0.03, 0.01]
+    q_base_moving : [-0.142660, -1.814699, 1.656699, 0.225495, 1.262466]
     inverse_kin:
       eps: 0.001
-      max_iter: 10000
+      max_iter: 1000
       dt: 0.1
       damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.001, 1.0, 0.2]
+      error_weights : [1.0, 1.0, 1.0, 0.05, 0.01, 1.0]
     genetic_algo_inverse_kin:
       population_size: 3000
       max_iter: 30
       nb_keep_ind: 400
       eps: 0.001
       mutation_max_amplitude: 0.1
+
