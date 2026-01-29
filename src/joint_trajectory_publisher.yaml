@@ -23,6 +23,14 @@ joint_trajectory_publisher:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]
     description: "Frame name of the objects in tf."
+  world_frame:
+    type: string
+    default_value: "odom"
+    description: "Name of the world frame."
+  base_frame:
+    type: string
+    default_value: "base_footprint"
+    description: "Name of the base link frame."
   rate:
     type: double
     default_value: 100.0

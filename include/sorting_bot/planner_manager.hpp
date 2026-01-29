@@ -55,6 +55,8 @@ public:
     motion_planner.initialize(urdf, ee_frame_name, params);
     des_precision_ = params.des_precision;
     robot_name_ = params.robot_name;
+    world_frame_ = params.world_frame;
+    base_frame_ = params.base_frame;
     box_dist_while_placing_ = params.box_dist_while_placing;
     in_object_translation_grasp_ = Eigen::Map<Eigen::VectorXd>(params.in_object_translation_grasp.data(), params.in_object_translation_grasp.size());
     q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
@@ -131,7 +133,6 @@ public:
 
   bool find_next_object_to_grasp_transform()
   {
-    std::string parent_frame = "base_footprint";
     bool found_transform = false;
     std::vector<std::string> objects_frame = {};
     if (state_ == SEARCHING_OBJECTS)
@@ -150,10 +151,9 @@ public:
     {
       try
       {
-        pinocchio::SE3 in_base_M_object = get_most_recent_transform(parent_frame, object_frame);
+        pinocchio::SE3 in_base_M_object = get_most_recent_transform(base_frame_, object_frame);
         pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_object);
         found_transform = true;
-        // publish_transform(des_transform, "base_link", "desired_pose");
         current_target_ = make_tuple(object_frame, in_base_M_gripper);
         auto val = get_base_goal_waypoints();
         objects_done_.push_back(object_frame);
@@ -171,11 +171,11 @@ public:
   bool find_box_transform()
   {
 
-    std::string parent_frame = "base_footprint", box_frame = "box";
+    std::string box_frame = "box";
     bool found_transform = false;
     try
     {
-      in_base_M_box_ = get_most_recent_transform(parent_frame, box_frame);
+      in_base_M_box_ = get_most_recent_transform(base_frame_, box_frame);
       found_transform = true;
       std::cout << "found box  " << std::endl;
     }
@@ -250,7 +250,7 @@ public:
         return {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
       else
       {
-        pinocchio::SE3 in_world_M_base = get_most_recent_transform("odom", "base_footprint");
+        pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
         pinocchio::SE3 in_world_M_box_ = in_world_M_base * in_base_M_box_;
         return {Eigen::Vector3d(box_dist_while_placing_ + in_world_M_box_.translation()[0], in_world_M_box_.translation()[1], M_PI)};
       }
@@ -413,9 +413,9 @@ public:
     update_actions(nav_result);
     if (new_transform != pinocchio::SE3::Identity())
     {
-      publish_transform(first_transform, "base_footprint", "first_transform");
-      publish_transform(sec_transform, "base_footprint", "sec_transform");
-      publish_transform(new_transform, "base_footprint", "new_transform");
+      publish_transform(first_transform, base_frame_, "first_transform");
+      publish_transform(sec_transform, base_frame_, "sec_transform");
+      publish_transform(new_transform, base_frame_, "new_transform");
     }
 
     //  Change state if we it has a goal and we reach it.
@@ -555,7 +555,7 @@ private:
   enum StateMachine state_ = SEARCHING_OBJECTS;
   std::vector<StateMachine> state_order_ = {SEARCHING_OBJECTS, GOING_TO_GRASP_POSE, GRASPING, SEARCHING_BOX, PLACING};
   std::vector<std::tuple<ActionType, double>> actions_ = {};
-  std::string robot_name_;
+  std::string robot_name_, world_frame_, base_frame_;
   bool trajectory_ready_ = false, current_state_action_were_sent_ = false, goal_base_pose_published_ = false, start_new_action_ = true;
   double des_precision_, box_dist_while_placing_, time_ = 0.;
   MotionPlanner motion_planner;

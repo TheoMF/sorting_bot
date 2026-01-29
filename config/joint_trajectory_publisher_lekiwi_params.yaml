@@ -7,6 +7,8 @@ joint_trajectory_publisher:
     joint_trajectory_topic: "/lekiwi_controller/joint_trajectory"
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
     objects_frame: ["glass", "cardboard", "metal", "plastic"]
+    world_frame: "odom"
+    base_frame: "base_footprint"
     rate: 100.0
     use_genetic_algo: false
     motion_planning_time_coeff: 2.3
