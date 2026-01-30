@@ -223,6 +223,7 @@ public:
     {
       current_state_action_were_sent_ = false;
       actions_ = {};
+      reset_actions_attributes();
     }
   }
 
@@ -332,7 +333,7 @@ public:
     switch (state_)
     {
     case SEARCHING_OBJECTS:
-      actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
+      actions.push_back(std::make_tuple(MOVE_JAW, -0.45));
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
@@ -349,7 +350,7 @@ public:
     case GRASPING:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 3.));
       actions.push_back(std::make_tuple(WAIT, 0.5));
-      actions.push_back(std::make_tuple(MOVE_JAW, -0.5));
+      actions.push_back(std::make_tuple(MOVE_JAW, -0.45));
       actions.push_back(std::make_tuple(WAIT, 1.0));
       break;
     case SEARCHING_BOX:
@@ -386,6 +387,7 @@ public:
       ActionType action_type = std::get<0>(action);
       if (start_new_action_)
       {
+        start_new_action_ = false;
         if (action_type == SEARCH_OBJECT)
         {
           do_search_object_action();
@@ -401,9 +403,16 @@ public:
           trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
           std::cout << "new traj will start soon" << std::endl;
         }
-        start_new_action_ = false;
       }
     }
+  }
+
+  void reset_actions_attributes()
+  {
+    time_ = 0.;
+    goal_base_pose_published_ = false;
+    start_new_action_ = true;
+    trajectory_ready_ = false;
   }
 
   void update_actions_status(const rclcpp_action::ResultCode &nav_result)
@@ -420,9 +429,7 @@ public:
       {
         actions_.erase(actions_.begin());
         time_ = 0.;
-        goal_base_pose_published_ = false;
-        start_new_action_ = true;
-        trajectory_ready_ = false;
+        reset_actions_attributes();
       }
     }
   }
@@ -538,7 +545,7 @@ public:
                 << in_base_M_box_ << " in_box_M_compartment \n"
                 << in_box_M_compartment << " base_link_M_compartment\n"
                 << in_base_M_compartment << std::endl;
-      pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, "box");
+      pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, object);
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
       q_waypoints = {q_above_compartment};
     }
