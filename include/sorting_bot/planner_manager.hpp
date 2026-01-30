@@ -41,7 +41,7 @@ public:
     {
       for (double j = -1.; j == -1. || j == 1.; j += 2.)
       {
-        Eigen::Vector3d box_to_compartment_trans(i * box_length / 4.0, 0.1, -box_width / 2.0 + j * box_width / 4.0);
+        Eigen::Vector3d box_to_compartment_trans(i * box_length / 4.0, 0.15, -box_width / 2.0 + j * box_width / 4.0);
         pinocchio::SE3 in_box_M_compartment(Eigen::Quaterniond(0., 1., 0., 0.), box_to_compartment_trans);
         in_box_M_compartments_.push_back(in_box_M_compartment);
       }

@@ -300,6 +300,8 @@ namespace joint_trajectory_publisher
       // Add log if we started an action.
       if (action_type != last_action_)
       {
+        if (last_action_ == SET_MOVE_BASE_Q || last_action_ == FOLLOW_TRAJ)
+          RCLCPP_INFO(this->get_logger(), "add_integration_in_err %d %d %d %d %d", add_integration_in_err[0], add_integration_in_err[1], add_integration_in_err[2], add_integration_in_err[3], add_integration_in_err[4]);
         last_action_ = action_type;
         RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action_type));
       }
@@ -327,12 +329,22 @@ namespace joint_trajectory_publisher
     {
       Eigen::VectorXd q_ref = q_traj_;
       Eigen::VectorXd q_err = q_traj_ - current_q_;
+      std::vector<int> curr_add_integration_in_err = {0, 0, 0, 0, 0};
+      bool changed_values = false;
       for (int idx = 0; idx < nq_; idx++)
       {
         q_ref[idx] += sign(q_err[idx]) * params_.friction_compensation[idx];
         if (std::abs(q_err[idx]) > params_.des_precision)
+        {
+          curr_add_integration_in_err[idx] = 1;
+          changed_values = true;
           integrated_q_err_[idx] += params_.integration_coeffs[idx] / params_.rate * q_err[idx];
+        }
+        else
+          add_integration_in_err[idx] = 0;
       }
+      if (changed_values)
+        add_integration_in_err = curr_add_integration_in_err;
       return q_ref + integrated_q_err_;
     }
 
@@ -373,6 +385,7 @@ namespace joint_trajectory_publisher
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
         parameter_listener_;
     joint_trajectory_publisher::Params params_;
+    std::vector<int> add_integration_in_err = {0, 0, 0, 0, 0};
 
     std::vector<Eigen::VectorXd> q_waypoints, last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
     rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_;
