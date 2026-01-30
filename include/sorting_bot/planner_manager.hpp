@@ -58,7 +58,12 @@ public:
     world_frame_ = params.world_frame;
     base_frame_ = params.base_frame;
     box_dist_while_placing_ = params.box_dist_while_placing;
-    in_object_translation_grasp_ = Eigen::Map<Eigen::VectorXd>(params.in_object_translation_grasp.data(), params.in_object_translation_grasp.size());
+
+    for (std::string &object_frame : params.objects_frame)
+    {
+      std::vector<double> in_object_translation_gripper = params.objects_frame_map.at(object_frame).in_object_translation_gripper;
+      in_object_translation_grasp_map_.insert({object_frame, Eigen::Map<Eigen::Vector3d>(in_object_translation_gripper.data(), in_object_translation_gripper.size())});
+    }
     q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
     q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
     q_base_moving_ = Eigen::Map<Eigen::VectorXd>(params.q_base_moving.data(), params.q_base_moving.size());
@@ -114,18 +119,32 @@ public:
     tf_broadcaster_->sendTransform(transform_msg);
   }
 
-  pinocchio::SE3 get_in_base_M_gripper(const pinocchio::SE3 &in_base_M_object)
+  pinocchio::SE3 get_in_base_M_gripper(const pinocchio::SE3 &in_base_M_object, const std::string &object_frame)
   {
+    bool gripper_on_top;
+    if (object_frame == "metal")
+      gripper_on_top = true;
+    else
+      gripper_on_top = false;
+    pinocchio::SE3::Quaternion ideal_rot_quat;
+    if (gripper_on_top)
+      ideal_rot_quat = top_ideal_rot_quat_;
+    else
+      ideal_rot_quat = front_ideal_rot_quat_;
     pinocchio::SE3 in_base_M_gripper = in_base_M_object;
-    in_base_M_gripper.rotation() = ideal_rot_quat_.toRotationMatrix();
+    in_base_M_gripper.rotation() = ideal_rot_quat.toRotationMatrix();
     first_transform = in_base_M_gripper;
 
     double y_angle = std::atan2(in_base_M_gripper.translation()[1], in_base_M_gripper.translation()[0]);
-    Eigen::AngleAxisd y_angle_axis_rot = Eigen::AngleAxisd(-y_angle, Eigen::Vector3d::UnitY());
+    Eigen::AngleAxisd y_angle_axis_rot;
+    if (gripper_on_top)
+      y_angle_axis_rot = Eigen::AngleAxisd(-y_angle, Eigen::Vector3d::UnitZ());
+    else
+      y_angle_axis_rot = Eigen::AngleAxisd(-y_angle, Eigen::Vector3d::UnitY());
     in_base_M_gripper.rotation() = in_base_M_gripper.rotation() * y_angle_axis_rot.toRotationMatrix();
     sec_transform = in_base_M_gripper;
 
-    const Eigen::Vector3d in_base_trans = Eigen::Vector3d(in_object_translation_grasp_);
+    Eigen::Vector3d in_base_trans = in_object_translation_grasp_map_[object_frame];
     Eigen::Vector3d in_des_trans = in_base_M_gripper.rotation() * in_base_trans;
     in_base_M_gripper.translation() += in_des_trans;
     return in_base_M_gripper;
@@ -152,7 +171,9 @@ public:
       try
       {
         pinocchio::SE3 in_base_M_object = get_most_recent_transform(base_frame_, object_frame);
-        pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_object);
+
+        pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_object, object_frame);
+
         found_transform = true;
         current_target_ = make_tuple(object_frame, in_base_M_gripper);
         auto val = get_base_goal_waypoints();
@@ -478,12 +499,13 @@ public:
       pinocchio::SE3 in_base_M_object = std::get<1>(current_target_);
       double yaw_angle = std::atan2(in_base_M_object.translation()[1], in_base_M_object.translation()[0] - 0.067);
       Eigen::VectorXd des_q = q_;
-      des_q[0] = -yaw_angle;
+      des_q[0] = -0.142660 - yaw_angle;
       std::cout << "object_translation \n " << in_base_M_object.translation() << "object at yaw " << yaw_angle << " set q0 at " << des_q[0] << std::endl;
       q_waypoints = {des_q};
     }
     else if (state_ == GRASPING)
     {
+      std::string object_frame = std::get<0>(current_target_);
       pinocchio::SE3 des_transform = std::get<1>(current_target_);
 
       new_transform = des_transform;
@@ -492,7 +514,11 @@ public:
       std::cout << "Object IK res : \n"
                 << q_goal << std::endl;
       pinocchio::SE3 above_object_des_transform = des_transform;
-      Eigen::VectorXd translation = Eigen::Vector3d(0., -0.06, -0.03);
+      Eigen::VectorXd translation;
+      if (object_frame == "metal")
+        translation = Eigen::Vector3d(0., 0.03, -0.06);
+      else
+        translation = Eigen::Vector3d(0., -0.06, -0.03);
       translation = above_object_des_transform.rotation() * translation;
       above_object_des_transform.translation() += translation;
       q_waypoint_above_object_ = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
@@ -512,7 +538,7 @@ public:
                 << in_base_M_box_ << " in_box_M_compartment \n"
                 << in_box_M_compartment << " base_link_M_compartment\n"
                 << in_base_M_compartment << std::endl;
-      pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment);
+      pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, "box");
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
       q_waypoints = {q_above_compartment};
     }
@@ -549,7 +575,8 @@ public:
 
 private:
   int nq_ = 5;
-  Eigen::VectorXd q_, q_base_moving_, in_object_translation_grasp_;
+  Eigen::VectorXd q_, q_base_moving_;
+  std::map<std::string, Eigen::Vector3d> in_object_translation_grasp_map_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   enum StateMachine state_ = SEARCHING_OBJECTS;
@@ -564,7 +591,7 @@ private:
   pinocchio::SE3 in_base_M_box_ = pinocchio::SE3::Identity(), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
 
   std::vector<std::vector<double>> q_inits_vec_ = {{-0.14266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.66266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.94266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
-  pinocchio::SE3::Quaternion ideal_rot_quat_ = Eigen::Quaternion(0.50762351, -0.56451828, 0.48617564, -0.43581315); // 0.583, -0.500, 0.549, -0.330
+  pinocchio::SE3::Quaternion front_ideal_rot_quat_ = Eigen::Quaternion(0.466896, -0.53408, 0.634467, -0.30695), top_ideal_rot_quat_ = Eigen::Quaternion(0.0136498, -0.624938, 0.780508, -0.00855614);
   std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.0, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.0, 0.0)}, {Eigen::Vector3d(0.5, 0.5, M_PI_2)}, {Eigen::Vector3d(0.0, 0.5, M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;

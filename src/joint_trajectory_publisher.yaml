@@ -23,6 +23,12 @@ joint_trajectory_publisher:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]
     description: "Frame name of the objects in tf."
+  __map_objects_frame:
+    in_object_translation_gripper:
+      type: double_array
+      description: "Translation from object frame to gripper frame."
+      validation:
+        not_empty<>: []
   world_frame:
     type: string
     default_value: "odom"
@@ -65,11 +71,6 @@ joint_trajectory_publisher:
       description: "Compensation used in position reference for friction."
       validation:
         not_empty<>: []
-  in_object_translation_grasp:
-    type: double_array
-    description: "Translation from object frame to grasping frame."
-    validation:
-      not_empty<>: []
   q_base_moving:
       type: double_array
       description: "Configuration while base is moving."

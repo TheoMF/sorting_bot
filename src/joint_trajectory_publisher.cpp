@@ -167,6 +167,7 @@ namespace joint_trajectory_publisher
       if (!navigation_action_client_->wait_for_action_server(std::chrono::seconds(1)))
       {
         RCLCPP_WARN(this->get_logger(), "navigation server not available");
+        planner_manager_.set_goal_base_pose_published(false);
         return;
       }
 
