@@ -70,13 +70,25 @@ public:
     Eigen::Matrix<double, 5, 1> err_5d;
     err_5d.head<3>() = err.head<3>();
     err_5d.tail<2>() = err.tail<2>();
-    std::cout << "inverse kinematic pose error norm " << err_5d.norm() << "base IK err " << pose_err << std::endl;
-    if (pose_err > 0.02)
+    std::cout << "inverse kinematic pose error norm " << err_5d.norm() << "base IK err " << pose_err << " q inv \n"
+              << q_inv_kin
+              << std::endl;
+
+    if (pose_err > 0.05)
     {
       std::cout << "didnt converge, returning q_init" << std::endl;
       return q_init;
     }
     return q_inv_kin;
+  }
+
+  void print_ee_pose(const Eigen::VectorXd &q)
+  {
+    pinocchio::framesForwardKinematics(*model_ptr_, *data_ptr_, q);
+    const pinocchio::SE3 iMd = data_ptr_->oMf[ee_frame_id_];
+    std::cout << "in_base_M_ee " << iMd << std::endl;
+    auto quat = pinocchio::SE3::Quaternion(iMd.rotation());
+    std::cout << "in_base_M_ee quat " << quat << std::endl;
   }
 
   pinocchio::SE3 get_frame_pose_at_q(Eigen::VectorXd &q, std::string &frame_name)

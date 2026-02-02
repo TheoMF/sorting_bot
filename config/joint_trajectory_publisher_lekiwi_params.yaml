@@ -8,30 +8,30 @@ joint_trajectory_publisher:
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
     objects_frame: ["glass", "cardboard", "metal", "plastic"]
     glass:
-      in_object_translation_gripper: [0.032, 0.015, 0.02]
+      in_object_translation_gripper: [0.034, 0.037, 0.035]
     cardboard:
-      in_object_translation_gripper: [0.04, 0.02, 0.02]
+      in_object_translation_gripper: [0.04, 0.025, 0.025]
     metal:
-      in_object_translation_gripper: [0.061, -0.02, 0.02]
+      in_object_translation_gripper: [0.03, -0.02, 0.028]
     plastic:
-      in_object_translation_gripper: [0.045, 0.02, 0.02]
+      in_object_translation_gripper: [0.045, 0.025, 0.025]
     world_frame: "odom"
     base_frame: "base_footprint"
     rate: 100.0
     use_genetic_algo: false
-    motion_planning_time_coeff: 2.3
+    motion_planning_time_coeff: 2.1
     box_dist_while_placing : 0.25
-    integration_coeffs: [0.6, 1.0, 1.2, 1.0, 0.0]
-    des_precision : 0.025
+    integration_coeffs: [0.2, 1.9, 2.2, 1.0, 0.2]
+    des_precision : 0.02
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    friction_compensation: [0.01,0.01,0.01,0.0,0.0]
-    q_base_moving : [-0.142660, -1.704699, 1.656699, 0.625495, 1.262466]
+    friction_compensation: [0.015,0.01,0.01,0.0,0.0]
+    q_base_moving : [-0.142660, -1.704699, 1.578466, 0.625495, 1.262466]
     inverse_kin:
       eps: 0.001
       max_iter: 1000
       dt: 0.1
       damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.02, 0.01, 1.0]
+      error_weights : [1.0, 1.0, 1.0, 0.02, 0.008, 1.0]
     genetic_algo_inverse_kin:
       population_size: 3000
       max_iter: 30

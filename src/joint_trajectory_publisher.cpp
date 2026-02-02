@@ -334,14 +334,12 @@ namespace joint_trajectory_publisher
       for (int idx = 0; idx < nq_; idx++)
       {
         q_ref[idx] += sign(q_err[idx]) * params_.friction_compensation[idx];
-        if (std::abs(q_err[idx]) > params_.des_precision)
+        if (std::abs(q_err[idx]) > params_.des_precision * 0.5)
         {
           curr_add_integration_in_err[idx] = 1;
           changed_values = true;
           integrated_q_err_[idx] += params_.integration_coeffs[idx] / params_.rate * q_err[idx];
         }
-        else
-          add_integration_in_err[idx] = 0;
       }
       if (changed_values)
         add_integration_in_err = curr_add_integration_in_err;
@@ -355,15 +353,20 @@ namespace joint_trajectory_publisher
         return;
       planner_manager_.update_state(current_q_, base_pose_, nav_result_);
       do_actions();
-      q_ref_ = compute_q_ref();
 
       // Get current state
       std::tuple<ActionType, double> action = planner_manager_.get_current_action();
       ActionType action_type = std::get<0>(action);
-
       // Only publish trajectory references when needed.
-      if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
+      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q))
       {
+        last_q_ref_ = q_ref_;
+        q_ref_ = compute_q_ref();
+        if ((last_q_ref_ - q_ref_).norm() > 0.1)
+        {
+          std::cout << " stopped qref " << q_ref_ << " last qref " << last_q_ref_ << std::endl;
+          return;
+        }
         trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
         joint_trajectory_msg.joint_names = params_.joint_names;
         trajectory_msgs::msg::JointTrajectoryPoint curr_point;
@@ -378,7 +381,7 @@ namespace joint_trajectory_publisher
     }
 
     int nq_ = 5;
-    Eigen::VectorXd current_q_, q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
+    Eigen::VectorXd current_q_, q_ref_ = Eigen::VectorXd::Zero(nq_), last_q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
                                 base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.
