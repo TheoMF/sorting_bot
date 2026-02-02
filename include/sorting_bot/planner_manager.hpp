@@ -35,7 +35,7 @@ public:
     q_waypoint_above_object_ = Eigen::VectorXd::Zero(5);
     tf_buffer_ = nullptr;
     robot_name_ = "SO-101";
-    double box_width = 0.23, box_length = 0.315;
+    double box_width = 0.24, box_length = 0.315;
     Eigen::Quaterniond rot_x_axis_pi_quat(0., 1., 0., 0.);
     for (double i = -1.; i == -1. || i == 1.; i += 2.)
     {
@@ -177,7 +177,6 @@ public:
 
         found_transform = true;
         current_target_ = make_tuple(object_frame, in_base_M_gripper);
-        auto val = get_base_goal_waypoints();
         objects_done_.push_back(object_frame);
         std::cout << "found object  " << object_frame.c_str() << std::endl;
         break;
@@ -200,10 +199,13 @@ public:
       {
         pinocchio::SE3 in_base_M_box_frame = get_most_recent_transform(base_frame_, box_frame);
         in_base_M_box_ = in_base_M_box_frame;
+
         if (box_frame == "box_left")
-          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.119, 0., 0.);
+          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
         else if (box_frame == "box_right")
-          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.109, 0., 0.);
+          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
+        pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
+        in_world_M_box_ = in_world_M_base * in_base_M_box_;
         std::cout << "found box, in_base_translation_box : " << in_base_M_box_.translation() << std::endl;
         return true;
       }
@@ -279,9 +281,8 @@ public:
     if (state_ == SEARCHING_OBJECTS)
     {
       std::vector<Eigen::VectorXd> base_waypoints = base_poses_waypoints_vec_[search_obj_base_waypoints_vec_idx_];
-      pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
       for (Eigen::VectorXd &base_waypoint : base_waypoints)
-        base_waypoint += (in_world_M_base * in_base_M_box_).translation();
+        base_waypoint += in_world_M_box_.translation();
       return base_waypoints;
     }
     else if (state_ == SEARCHING_BOX)
@@ -292,8 +293,6 @@ public:
         return {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
       else
       {
-        pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
-        pinocchio::SE3 in_world_M_box_ = in_world_M_base * in_base_M_box_;
         return {Eigen::Vector3d(box_dist_while_placing_ + in_world_M_box_.translation()[0], in_world_M_box_.translation()[1], M_PI)};
       }
     }
@@ -357,12 +356,12 @@ public:
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      actions.push_back(std::make_tuple(WAIT, 0.5));
+      actions.push_back(std::make_tuple(WAIT, 1.3));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
-      actions.push_back(std::make_tuple(WAIT, 1.0));
+      actions.push_back(std::make_tuple(WAIT, 1.3));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       actions.push_back(std::make_tuple(WAIT, 0.5));
@@ -379,14 +378,14 @@ public:
         actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
         actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
       }
-      actions.push_back(std::make_tuple(WAIT, 1.0));
+      actions.push_back(std::make_tuple(WAIT, 1.3));
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
       if (robot_name_ == "LeKiwi")
       {
         actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
-        actions.push_back(std::make_tuple(WAIT, 1.0));
+        actions.push_back(std::make_tuple(WAIT, 1.3));
         actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       }
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 4.));
@@ -620,11 +619,11 @@ private:
   MotionPlanner motion_planner;
   std::vector<Eigen::VectorXd> q_waypoints = {}, q_inits_ = {}, searching_box_base_waypoints_ = {};
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
-  pinocchio::SE3 in_base_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
+  pinocchio::SE3 in_world_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), in_base_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
 
-  std::vector<std::vector<double>> q_inits_vec_ = {{-0.14266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.66266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.94266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
+  std::vector<std::vector<double>> q_inits_vec_ = {{0.06266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.86266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.74266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion front_ideal_rot_quat_ = Eigen::Quaternion(0.466896, -0.53408, 0.634467, -0.30695), top_ideal_rot_quat_ = Eigen::Quaternion(0.0136498, -0.624938, 0.780508, -0.00855614);
-  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.25, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.75, M_PI_2)}, {Eigen::Vector3d(0.25, 0.75, M_PI)}};
+  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.25, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.0, 0.0)}, {Eigen::Vector3d(1.0, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.25, -0.75, -M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};
