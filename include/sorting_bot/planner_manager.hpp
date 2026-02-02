@@ -35,7 +35,7 @@ public:
     q_waypoint_above_object_ = Eigen::VectorXd::Zero(5);
     tf_buffer_ = nullptr;
     robot_name_ = "SO-101";
-    double box_width = 0.2, box_length = 0.315;
+    double box_width = 0.23, box_length = 0.315;
     Eigen::Quaterniond rot_x_axis_pi_quat(0., 1., 0., 0.);
     for (double i = -1.; i == -1. || i == 1.; i += 2.)
     {
@@ -193,19 +193,27 @@ public:
   bool find_box_transform()
   {
 
-    std::string box_frame = "box";
-    bool found_transform = false;
-    try
+    std::vector<std::string> box_frames = {"box_center", "box_left", "box_right"};
+    for (std::string &box_frame : box_frames)
     {
-      in_base_M_box_ = get_most_recent_transform(base_frame_, box_frame);
-      found_transform = true;
-      std::cout << "found box  " << std::endl;
+      try
+      {
+        pinocchio::SE3 in_base_M_box_frame = get_most_recent_transform(base_frame_, box_frame);
+        in_base_M_box_ = in_base_M_box_frame;
+        if (box_frame == "box_left")
+          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.119, 0., 0.);
+        else if (box_frame == "box_right")
+          in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.109, 0., 0.);
+        std::cout << "found box, in_base_translation_box : " << in_base_M_box_.translation() << std::endl;
+        return true;
+      }
+      catch (const tf2::TransformException &ex)
+      {
+        std::cout << "didn't found " << box_frame << " frame, error : " << ex.what() << std::endl;
+      }
     }
-    catch (const tf2::TransformException &ex)
-    {
-      std::cout << "didn't found box transform " << " error : " << ex.what() << std::endl;
-    }
-    return found_transform;
+
+    return false;
   }
 
   void do_search_object_action()
@@ -215,7 +223,7 @@ public:
       std::cout << "didn't found object, restart state  " << std::endl;
       current_state_action_were_sent_ = false;
     }
-    else if (state_ == SEARCH_OBJECT)
+    else if (state_ == SEARCHING_OBJECTS)
     {
       q_init_idx_ = 0;
       search_obj_base_waypoints_vec_idx_ = (search_obj_base_waypoints_vec_idx_ + 1) % base_poses_waypoints_vec_.size();
@@ -271,8 +279,9 @@ public:
     if (state_ == SEARCHING_OBJECTS)
     {
       std::vector<Eigen::VectorXd> base_waypoints = base_poses_waypoints_vec_[search_obj_base_waypoints_vec_idx_];
+      pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
       for (Eigen::VectorXd &base_waypoint : base_waypoints)
-        base_waypoint += in_base_M_box_.translation();
+        base_waypoint += (in_world_M_base * in_base_M_box_).translation();
       return base_waypoints;
     }
     else if (state_ == SEARCHING_BOX)
