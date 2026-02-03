@@ -261,9 +261,10 @@ namespace joint_trajectory_publisher
     {
       if (planner_manager_.trajectory_ready())
       {
-        std::tuple<Eigen::VectorXd, Eigen::VectorXd> traj_value = planner_manager_.get_traj_value_at_t();
+        std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> traj_value = planner_manager_.get_traj_value_at_t();
         q_traj_ = std::get<0>(traj_value);
         q_dot_traj_ = std::get<1>(traj_value);
+        planning_quintic_polynom_value_ = std::get<2>(traj_value);
       }
     }
 
@@ -301,7 +302,11 @@ namespace joint_trajectory_publisher
       if (action_type != last_action_)
       {
         if (last_action_ == SET_MOVE_BASE_Q || last_action_ == FOLLOW_TRAJ)
+        {
+          std::cout << "finished traj with curr q " << current_q_ << " q_ref_ " << q_ref_ << " integ " << integrated_q_err_ << std::endl;
           RCLCPP_INFO(this->get_logger(), "add_integration_in_err %d %d %d %d %d", add_integration_in_err[0], add_integration_in_err[1], add_integration_in_err[2], add_integration_in_err[3], add_integration_in_err[4]);
+        }
+
         last_action_ = action_type;
         RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action_type));
       }
@@ -310,10 +315,6 @@ namespace joint_trajectory_publisher
       planner_manager_.update_actions_status(nav_result_);
       if (nav_result_ != rclcpp_action::ResultCode::UNKNOWN)
         nav_result_ = rclcpp_action::ResultCode::UNKNOWN;
-
-      // if configuration trajectory point hasn't been initialized, use current configuration.
-      if (q_traj_ == Eigen::VectorXd::Zero(nq_))
-        q_traj_ = current_q_;
     }
 
     double sign(const double &val)
@@ -328,13 +329,13 @@ namespace joint_trajectory_publisher
     Eigen::VectorXd compute_q_ref()
     {
       Eigen::VectorXd q_ref = q_traj_;
-      Eigen::VectorXd q_err = q_traj_ - current_q_;
+      Eigen::VectorXd q_err = planning_quintic_polynom_value_ * q_ref + (1.0 - planning_quintic_polynom_value_) * start_traj_q_ - current_q_;
       std::vector<int> curr_add_integration_in_err = {0, 0, 0, 0, 0};
       bool changed_values = false;
       for (int idx = 0; idx < nq_; idx++)
       {
         q_ref[idx] += sign(q_err[idx]) * params_.friction_compensation[idx];
-        if (std::abs(q_err[idx]) > params_.des_precision * 0.5)
+        if (std::abs(q_err[idx]) > params_.joints_des_precision[idx] * 0.1)
         {
           curr_add_integration_in_err[idx] = 1;
           changed_values = true;
@@ -343,7 +344,7 @@ namespace joint_trajectory_publisher
       }
       if (changed_values)
         add_integration_in_err = curr_add_integration_in_err;
-      return q_ref + integrated_q_err_;
+      return q_ref;
     }
 
     void joint_traj_pub_callback()
@@ -358,19 +359,21 @@ namespace joint_trajectory_publisher
       std::tuple<ActionType, double> action = planner_manager_.get_current_action();
       ActionType action_type = std::get<0>(action);
       // Only publish trajectory references when needed.
-      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q))
+      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q) && planner_manager_.trajectory_ready())
       {
+        if (!start_traj)
+        {
+          start_traj_q_ = current_q_;
+          start_traj = true;
+        }
+
         last_q_ref_ = q_ref_;
         q_ref_ = compute_q_ref();
-        if ((last_q_ref_ - q_ref_).norm() > 0.1)
-        {
-          std::cout << " stopped qref " << q_ref_ << " last qref " << last_q_ref_ << std::endl;
-          return;
-        }
+        Eigen::VectorXd q_traj = planning_quintic_polynom_value_ * q_ref_ + (1.0 - planning_quintic_polynom_value_) * start_traj_q_ + integrated_q_err_;
         trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
         joint_trajectory_msg.joint_names = params_.joint_names;
         trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-        std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
+        std::vector<double> q_ref_vec(q_traj.data(), q_traj.data() + q_traj.size());
         std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
         curr_point.positions = q_ref_vec;
         curr_point.velocities = q_dot_ref_vec;
@@ -378,11 +381,13 @@ namespace joint_trajectory_publisher
         joint_trajectory_msg.points = {curr_point};
         publisher_->publish(joint_trajectory_msg);
       }
+      else
+        start_traj = false;
     }
 
     int nq_ = 5;
     Eigen::VectorXd current_q_, q_ref_ = Eigen::VectorXd::Zero(nq_), last_q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
-                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
+                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), start_traj_q_;
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
@@ -406,10 +411,11 @@ namespace joint_trajectory_publisher
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     PlannerManager planner_manager_;
+    double planning_quintic_polynom_value_ = 0.0;
     ActionType last_action_ = NONE;
     std::string end_effector_name_ = "gripper_frame_link";
     std::thread trajectory_computing_thread_;
-    bool joint_states_callback_ready_ = false, robot_description_ready_ = false;
+    bool joint_states_callback_ready_ = false, robot_description_ready_ = false, start_traj = false;
   };
 }
 

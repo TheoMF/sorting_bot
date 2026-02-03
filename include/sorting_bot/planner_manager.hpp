@@ -41,7 +41,7 @@ public:
     {
       for (double j = -1.; j == -1. || j == 1.; j += 2.)
       {
-        Eigen::Vector3d box_to_compartment_trans(i * box_length / 4.0, 0.15, -box_width / 2.0 + j * box_width / 4.0);
+        Eigen::Vector3d box_to_compartment_trans(i * box_length / 4.0, 0.18, -box_width / 2.0 + j * box_width / 4.0);
         pinocchio::SE3 in_box_M_compartment(Eigen::Quaterniond(0., 1., 0., 0.), box_to_compartment_trans);
         in_box_M_compartments_.push_back(in_box_M_compartment);
       }
@@ -53,12 +53,13 @@ public:
     tf_buffer_ = tf_buffer;
     tf_broadcaster_ = tf_broadcaster;
     motion_planner.initialize(urdf, ee_frame_name, params);
-    des_precision_ = params.des_precision;
+    joints_des_precision_ = params.joints_des_precision;
     robot_name_ = params.robot_name;
     world_frame_ = params.world_frame;
     base_frame_ = params.base_frame;
     ee_frame_name_ = ee_frame_name;
     box_dist_while_placing_ = params.box_dist_while_placing;
+    wait_duration_before_vision_action_ = params.wait_duration_before_vision_action;
 
     for (std::string &object_frame : params.objects_frame)
     {
@@ -247,9 +248,9 @@ public:
   {
     if (!trajectory_ready_)
       return false;
-    for (int angle_idx = 0; angle_idx < nq_; angle_idx++)
+    for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
     {
-      if (std::abs(q_waypoints.back()[angle_idx] - q[angle_idx]) > des_precision_)
+      if (std::abs(q_waypoints.back()[joint_idx] - q[joint_idx]) > joints_des_precision_[joint_idx])
         return false;
     }
     return true;
@@ -267,13 +268,8 @@ public:
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
       searching_box_base_waypoints_ = {
-          Eigen::Vector3d(base_pose_[0], 0., -M_PI_2),
           Eigen::Vector3d(base_pose_[0], 0., M_PI),
       };
-    if (base_pose_[0] > 0.2)
-    {
-      searching_box_base_waypoints_.push_back(Eigen::Vector3d(0.2, 0., M_PI));
-    }
   }
 
   std::vector<Eigen::VectorXd> get_base_goal_waypoints()
@@ -356,12 +352,12 @@ public:
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      actions.push_back(std::make_tuple(WAIT, 1.3));
+      actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 2.));
-      actions.push_back(std::make_tuple(WAIT, 1.3));
+      actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 2.0));
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       actions.push_back(std::make_tuple(WAIT, 0.5));
@@ -378,14 +374,14 @@ public:
         actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
         actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
       }
-      actions.push_back(std::make_tuple(WAIT, 1.3));
+      actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
       actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       break;
     case PLACING:
       if (robot_name_ == "LeKiwi")
       {
         actions.push_back(std::make_tuple(MOVE_BASE, 4.0));
-        actions.push_back(std::make_tuple(WAIT, 1.3));
+        actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
         actions.push_back(std::make_tuple(SEARCH_BOX, 2.0));
       }
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 4.));
@@ -558,6 +554,11 @@ public:
     }
     else if (state_ == PLACING)
     {
+      pinocchio::SE3 in_base_M_ee = motion_planner.get_frame_pose_at_q(q_, ee_frame_name_);
+      pinocchio::SE3 first_waypoint_in_base_M_ee = in_base_M_ee;
+      first_waypoint_in_base_M_ee.translation()[2] += 0.04;
+      Eigen::VectorXd q_first_waypoint = motion_planner.get_inverse_kinematic_at_pose(q_, first_waypoint_in_base_M_ee);
+
       std::cout << "start computing placing traj" << std::endl;
       std::string object = std::get<0>(current_target_);
       auto it = find(objects_frame_.begin(), objects_frame_.end(), object);
@@ -571,7 +572,7 @@ public:
                 << in_base_M_compartment << std::endl;
       pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, object);
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
-      q_waypoints = {q_above_compartment};
+      q_waypoints = {q_first_waypoint, q_above_compartment};
     }
     else
     {
@@ -583,7 +584,7 @@ public:
     std::cout << "finished setting traj" << std::endl;
   }
 
-  std::tuple<Eigen::VectorXd, Eigen::VectorXd> get_traj_value_at_t()
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> get_traj_value_at_t()
   {
     return motion_planner.get_traj_value_at_t(time_);
   }
@@ -615,8 +616,9 @@ private:
   std::vector<std::tuple<ActionType, double>> actions_ = {};
   std::string robot_name_, world_frame_, base_frame_, ee_frame_name_;
   bool trajectory_ready_ = false, current_state_action_were_sent_ = false, goal_base_pose_published_ = false, start_new_action_ = true;
-  double des_precision_, box_dist_while_placing_, time_ = 0.;
+  double box_dist_while_placing_, wait_duration_before_vision_action_, time_ = 0.;
   MotionPlanner motion_planner;
+  std::vector<double> joints_des_precision_;
   std::vector<Eigen::VectorXd> q_waypoints = {}, q_inits_ = {}, searching_box_base_waypoints_ = {};
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
   pinocchio::SE3 in_world_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), in_base_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
