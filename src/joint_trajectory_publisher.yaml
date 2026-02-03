@@ -57,6 +57,10 @@ joint_trajectory_publisher:
     type: double
     default_value: 1.5
     description: "Wait duration to perform before looking for an object detection in tf."
+  integration_done_coeff :
+    type: double
+    default_value: 0.7
+    description: "Percentage of the integrated position error we assume we achieved."
   integration_coeffs:
     type: double_array
     description: "Integration coefficients used for error in configuration position."

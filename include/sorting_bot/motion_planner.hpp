@@ -70,9 +70,7 @@ public:
     Eigen::Matrix<double, 5, 1> err_5d;
     err_5d.head<3>() = err.head<3>();
     err_5d.tail<2>() = err.tail<2>();
-    std::cout << "inverse kinematic pose error norm " << err_5d.norm() << "base IK err " << pose_err << " q inv \n"
-              << q_inv_kin
-              << std::endl;
+    std::cout << "base IK err " << pose_err << std::endl;
 
     if (pose_err > 0.05)
     {

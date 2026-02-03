@@ -40,14 +40,12 @@ public:
         {
             pinocchio::framesForwardKinematics(*model_ptr_, *data_ptr_, q);
             const pinocchio::SE3 iMd = data_ptr_->oMf[ee_frame_id_].actInv(in_world_M_des_pose);
-            pinocchio::SE3 test = data_ptr_->oMf[ee_frame_id_];
             err = pinocchio::log6(iMd).toVector();
             err = error_weights * err;
             if (i == 0)
             {
                 std::cout << "start IK, des transform :\n"
-                          << in_world_M_des_pose << "\n start transform : \n"
-                          << test << std::endl;
+                          << in_world_M_des_pose << std::endl;
             }
             if (err.norm() < eps)
             {

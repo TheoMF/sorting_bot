@@ -22,6 +22,7 @@ joint_trajectory_publisher:
     motion_planning_time_coeff: 2.3
     wait_duration_before_vision_action: 1.5
     box_dist_while_placing : 0.27
+    integration_done_coeff : 0.5
     integration_coeffs: [0.6, 2.2, 1.7, 1.8, 1.8]
     joints_des_precision : [0.04, 0.02, 0.02, 0.02, 0.02]
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]

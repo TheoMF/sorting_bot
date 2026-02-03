@@ -3,7 +3,6 @@
 #include <chrono>
 #include <unistd.h>
 
-#include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "tf2_ros/transform_listener.h"
@@ -352,7 +351,7 @@ namespace joint_trajectory_publisher
       // wait for joint states callback and robot description
       if (joint_states_callback_ready_ == false || robot_description_ready_ == false)
         return;
-      planner_manager_.update_state(current_q_, base_pose_, nav_result_);
+      planner_manager_.update_state(current_q_, base_pose_, nav_result_, this->get_clock()->now());
       do_actions();
 
       // Get current state
@@ -363,7 +362,8 @@ namespace joint_trajectory_publisher
       {
         if (!start_traj)
         {
-          start_traj_q_ = current_q_;
+          start_traj_q_ = current_q_ - params_.integration_done_coeff * integrated_q_err_;
+          start_traj_q_[2] += integrated_q_err_[2];
           start_traj = true;
         }
 

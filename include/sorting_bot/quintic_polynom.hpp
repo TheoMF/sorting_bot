@@ -84,7 +84,10 @@ public:
             q[joint_idx] = q_init[joint_idx] + pose_polynom_val * (q_goal[joint_idx] - q_init[joint_idx]);
             q_dot[joint_idx] = vel_polynom_val * (q_goal[joint_idx] - q_init[joint_idx]);
         }
-        return std::make_tuple(q, q_dot, pose_polynom_val);
+        if (current_waypoint_idx > 0)
+            return std::make_tuple(q, q_dot, 1.0);
+        else
+            return std::make_tuple(q, q_dot, pose_polynom_val);
     }
 
     double traj_duration()

@@ -2,6 +2,7 @@
 
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
+#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
 #include "sorting_bot/motion_planner.hpp"
@@ -192,22 +193,35 @@ public:
 
   bool find_box_transform()
   {
-
     std::vector<std::string> box_frames = {"box_center", "box_left", "box_right"};
     for (std::string &box_frame : box_frames)
     {
       try
       {
-        pinocchio::SE3 in_base_M_box_frame = get_most_recent_transform(base_frame_, box_frame);
+        geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform(base_frame_, box_frame, tf2::TimePointZero);
+        rclcpp::Time transform_time(stamped_transform.header.stamp);
+        if ((ros_time_ - transform_time).nanoseconds() > 0.5 * std::pow(10.0, 9))
+        {
+          std::cout << " transform for " << box_frame << " too old, time diff : " << (ros_time_ - transform_time).nanoseconds() << std::endl;
+          continue;
+        }
+        pinocchio::SE3 in_base_M_box_frame = transform_msg_to_SE3(stamped_transform.transform);
+        ;
         in_base_M_box_ = in_base_M_box_frame;
 
         if (box_frame == "box_left")
+        {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
+          std::cout << "got left box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
+        }
         else if (box_frame == "box_right")
+        {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
+          std::cout << "got right box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
+        }
         pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
         in_world_M_box_ = in_world_M_base * in_base_M_box_;
-        std::cout << "found box, in_base_translation_box : " << in_base_M_box_.translation() << std::endl;
+        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_ << " tf stamp " << transform_time.nanoseconds() << "curr stamp " << ros_time_.nanoseconds() << std::endl;
         return true;
       }
       catch (const tf2::TransformException &ex)
@@ -264,7 +278,7 @@ public:
   void compute_searching_box_base_waypoints()
   {
     Eigen::Vector3d last_waypoint;
-    if (std::abs(base_pose_[1] < 0.15))
+    if (std::abs(base_pose_[1]) < 0.15)
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
       searching_box_base_waypoints_ = {
@@ -277,15 +291,17 @@ public:
     if (state_ == SEARCHING_OBJECTS)
     {
       std::vector<Eigen::VectorXd> base_waypoints = base_poses_waypoints_vec_[search_obj_base_waypoints_vec_idx_];
-      for (Eigen::VectorXd &base_waypoint : base_waypoints)
-        base_waypoint += in_world_M_box_.translation();
+      // for (Eigen::VectorXd &base_waypoint : base_waypoints)
+      //   base_waypoint += in_world_M_box_.translation();
       return base_waypoints;
     }
     else if (state_ == SEARCHING_BOX)
       return searching_box_base_waypoints_;
     else if (state_ == PLACING)
     {
-      if (in_base_M_box_.translation().norm() < box_dist_while_placing_)
+
+      pinocchio ::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
+      if ((in_world_M_box_.inverse() * in_world_M_base).translation().norm() < box_dist_while_placing_)
         return {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
       else
       {
@@ -449,10 +465,11 @@ public:
     }
   }
 
-  void update_state(const Eigen::VectorXd &q, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result)
+  void update_state(const Eigen::VectorXd &q, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result, const rclcpp::Time ros_time)
   {
     q_ = q;
     base_pose_ = base_pose;
+    ros_time_ = ros_time;
     update_actions(nav_result);
     if (new_transform != pinocchio::SE3::Identity())
     {
@@ -527,7 +544,7 @@ public:
       des_in_base_M_ee.translation() = z_angle_axis_rot.toRotationMatrix() * current_in_base_M_ee.translation();
       des_in_base_M_ee.rotation() = z_angle_axis_rot.toRotationMatrix() * des_in_base_M_ee.rotation();
       Eigen::VectorXd des_q = motion_planner.get_inverse_kinematic_at_pose(q_, des_in_base_M_ee);
-      std::cout << "object_translation \n " << in_base_M_object.translation() << " set q0 at " << des_q[0] << std::endl;
+      std::cout << "object_translation \n " << in_base_M_object.translation() << std::endl;
       q_waypoints = {des_q};
     }
     else if (state_ == GRASPING)
@@ -538,8 +555,6 @@ public:
       new_transform = des_transform;
 
       Eigen::VectorXd q_goal = motion_planner.get_inverse_kinematic_at_pose(q_, des_transform);
-      std::cout << "Object IK res : \n"
-                << q_goal << std::endl;
       pinocchio::SE3 above_object_des_transform = des_transform;
       Eigen::VectorXd translation;
       if (object_frame == "metal")
@@ -566,10 +581,6 @@ public:
       std::cout << "object idx " << object_idx << std::endl;
       pinocchio::SE3 in_box_M_compartment = in_box_M_compartments_[object_idx];
       pinocchio::SE3 in_base_M_compartment = in_base_M_box_ * in_box_M_compartment;
-      std::cout << "in_base_M_box_ \n"
-                << in_base_M_box_ << " in_box_M_compartment \n"
-                << in_box_M_compartment << " base_link_M_compartment\n"
-                << in_base_M_compartment << std::endl;
       pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, object);
       Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
       q_waypoints = {q_first_waypoint, q_above_compartment};
@@ -607,6 +618,7 @@ public:
 
 private:
   int nq_ = 5;
+  rclcpp::Time ros_time_;
   Eigen::VectorXd q_, q_base_moving_;
   std::map<std::string, Eigen::Vector3d> in_object_translation_grasp_map_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
