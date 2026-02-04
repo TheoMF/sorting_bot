@@ -101,7 +101,7 @@ public:
     quintic_polynom_.set_plan(q_start, q_waypoints);
   }
 
-  std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> get_traj_value_at_t(const double &time)
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t(const double &time)
   {
     return quintic_polynom_.get_traj_value_at_t(time);
   }

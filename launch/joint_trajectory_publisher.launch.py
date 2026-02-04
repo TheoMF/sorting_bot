@@ -25,7 +25,8 @@ def launch_setup(
         package='sorting_bot',
         executable='joint_trajectory_publisher',
         output='screen',
-        parameters=[{"use_sim_time": True}, joint_trajectory_publisher_params],
+        parameters=[joint_trajectory_publisher_params],
+        #arguments=["--ros-args", "--log-level", "debug"]
     )
 
     return [joint_publisher_node]

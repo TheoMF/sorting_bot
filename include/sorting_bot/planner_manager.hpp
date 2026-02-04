@@ -91,13 +91,18 @@ public:
     return transform_msg_to_SE3(stamped_transform.transform);
   }
 
-  pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame)
+  pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame, std::string camera_frame)
   {
-    std::string cameraFrameRel = "camera";
-    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(cameraFrameRel, child_frame, tf2::TimePointZero);
+    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
+
+    rclcpp::Time transform_time(t.header.stamp);
+    if ((ros_time_ - transform_time).nanoseconds() > 0.5 * std::pow(10.0, 9))
+    {
+      throw tf2::TransformException(" transform too old");
+    }
     pinocchio::SE3 in_camera_M_cardboard = transform_msg_to_SE3(t.transform);
     auto camera_transform_stamp = t.header.stamp;
-    geometry_msgs::msg::TransformStamped other_t = tf_buffer_->lookupTransform(parent_frame, cameraFrameRel, camera_transform_stamp);
+    geometry_msgs::msg::TransformStamped other_t = tf_buffer_->lookupTransform(parent_frame, camera_frame, camera_transform_stamp);
     pinocchio::SE3 in_base_M_camera = transform_msg_to_SE3(other_t.transform);
     return in_base_M_camera * in_camera_M_cardboard;
   }
@@ -198,15 +203,7 @@ public:
     {
       try
       {
-        geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform(base_frame_, box_frame, tf2::TimePointZero);
-        rclcpp::Time transform_time(stamped_transform.header.stamp);
-        if ((ros_time_ - transform_time).nanoseconds() > 0.5 * std::pow(10.0, 9))
-        {
-          std::cout << " transform for " << box_frame << " too old, time diff : " << (ros_time_ - transform_time).nanoseconds() << std::endl;
-          continue;
-        }
-        pinocchio::SE3 in_base_M_box_frame = transform_msg_to_SE3(stamped_transform.transform);
-        ;
+        pinocchio::SE3 in_base_M_box_frame = get_in_base_M_object(base_frame_, box_frame, "base_camera");
         in_base_M_box_ = in_base_M_box_frame;
 
         if (box_frame == "box_left")
@@ -219,9 +216,13 @@ public:
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
           std::cout << "got right box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
         }
+        else
+          std::cout <<" got center box"<<std::endl;
         pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
         in_world_M_box_ = in_world_M_base * in_base_M_box_;
-        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_ << " tf stamp " << transform_time.nanoseconds() << "curr stamp " << ros_time_.nanoseconds() << std::endl;
+        geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform("base_camera", box_frame, tf2::TimePointZero);
+        rclcpp::Time transform_time(stamped_transform.header.stamp);
+        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_<< "duration as nano since last box det "<< (ros_time_ - transform_time).nanoseconds() << std::endl;
         return true;
       }
       catch (const tf2::TransformException &ex)
@@ -595,7 +596,7 @@ public:
     std::cout << "finished setting traj" << std::endl;
   }
 
-  std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> get_traj_value_at_t()
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t()
   {
     return motion_planner.get_traj_value_at_t(time_);
   }

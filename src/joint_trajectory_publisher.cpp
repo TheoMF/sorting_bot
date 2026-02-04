@@ -260,10 +260,10 @@ namespace joint_trajectory_publisher
     {
       if (planner_manager_.trajectory_ready())
       {
-        std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> traj_value = planner_manager_.get_traj_value_at_t();
+        std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> traj_value = planner_manager_.get_traj_value_at_t();
         q_traj_ = std::get<0>(traj_value);
         q_dot_traj_ = std::get<1>(traj_value);
-        planning_quintic_polynom_value_ = std::get<2>(traj_value);
+        over_traj_total_duration_ = std::get<2>(traj_value);
         traj_ready_ = true;
       }
     }
@@ -339,7 +339,10 @@ namespace joint_trajectory_publisher
         {
           curr_add_integration_in_err[idx] = 1;
           changed_values = true;
-          integrated_q_err_[idx] += params_.integration_coeffs[idx] / params_.rate * q_err[idx];
+          if (over_traj_total_duration_)
+            integrated_q_err_[idx] += params_.integration_coeffs_after_traj[idx] / params_.rate * q_err[idx];
+          else
+            integrated_q_err_[idx] += params_.integration_coeffs_during_traj[idx] / params_.rate * q_err[idx];
         }
       }
       if (changed_values)
@@ -413,7 +416,7 @@ namespace joint_trajectory_publisher
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     PlannerManager planner_manager_;
-    double planning_quintic_polynom_value_ = 0.0;
+    bool over_traj_total_duration_ = false;
     ActionType last_action_ = NONE;
     std::string end_effector_name_ = "gripper_frame_link";
     std::thread trajectory_computing_thread_;

@@ -60,15 +60,15 @@ public:
         return current_waypoint_idx;
     }
 
-    std::tuple<Eigen::VectorXd, Eigen::VectorXd, double> get_traj_value_at_t(const double &time)
+    std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t(const double &time)
     {
         if (time <= 0.)
-            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_), 0.0);
+            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_), false);
         if (time >= traj_duration_)
-            return std::make_tuple(q_waypoints_.back(), Eigen::VectorXd::Zero(nq_), 1.0);
+            return std::make_tuple(q_waypoints_.back(), Eigen::VectorXd::Zero(nq_), true);
         int current_waypoint_idx = get_current_waypoint_idx(time);
         if (current_waypoint_idx == -1)
-            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_), 0.0);
+            return std::make_tuple(q_start_, Eigen::VectorXd::Zero(nq_), false);
         Eigen::VectorXd q_init, q_goal;
         if (current_waypoint_idx == 0)
             q_init = q_start_;
@@ -85,9 +85,9 @@ public:
             q_dot[joint_idx] = vel_polynom_val * (q_goal[joint_idx] - q_init[joint_idx]);
         }
         if (current_waypoint_idx > 0)
-            return std::make_tuple(q, q_dot, 1.0);
+            return std::make_tuple(q, q_dot, false);
         else
-            return std::make_tuple(q, q_dot, pose_polynom_val);
+            return std::make_tuple(q, q_dot, false);
     }
 
     double traj_duration()

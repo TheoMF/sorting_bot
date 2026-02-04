@@ -12,17 +12,18 @@ joint_trajectory_publisher:
     cardboard:
       in_object_translation_gripper: [0.04, 0.025, 0.025]
     metal:
-      in_object_translation_gripper: [0.04, -0.02, 0.028]
+      in_object_translation_gripper: [0.032, -0.02, 0.028]
     plastic:
       in_object_translation_gripper: [0.04, 0.03, 0.035]
     world_frame: "odom"
     base_frame: "base_footprint"
     rate: 100.0
     use_genetic_algo: false
-    motion_planning_time_coeff: 2.2
-    wait_duration_before_vision_action: 1.5
+    motion_planning_time_coeff: 2.0
+    wait_duration_before_vision_action: 1.8
     box_dist_while_placing : 0.27
-    integration_coeffs: [1.7, 1.8, 1.8, 2.0, 2.5]
+    integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
+    integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
     joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
     friction_compensation: [0.01,0.01,0.01,0.0,0.0]
@@ -32,7 +33,7 @@ joint_trajectory_publisher:
       max_iter: 1000
       dt: 0.1
       damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.02, 0.008, 1.0]
+      error_weights : [1.0, 1.0, 1.0, 0.03, 0.008, 1.0]
     genetic_algo_inverse_kin:
       population_size: 3000
       max_iter: 30

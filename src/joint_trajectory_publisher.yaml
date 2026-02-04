@@ -57,9 +57,14 @@ joint_trajectory_publisher:
     type: double
     default_value: 1.5
     description: "Wait duration to perform before looking for an object detection in tf."
-  integration_coeffs:
+  integration_coeffs_after_traj:
     type: double_array
-    description: "Integration coefficients used for error in configuration position."
+    description: "Integration coefficients for position used after the end of a trajectory."
+    validation:
+        not_empty<>: []
+  integration_coeffs_during_traj:
+    type: double_array
+    description: "Integration coefficients for position used while tracking trajectory."
     validation:
         not_empty<>: []
   joints_des_precision:
