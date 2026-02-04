@@ -260,7 +260,7 @@ public:
 
   bool goal_pose_achieved(const Eigen::VectorXd &q)
   {
-    if (!trajectory_ready_)
+    if (!trajectory_ready_ || time_ < motion_planner.get_traj_duration())
       return false;
     for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
     {
@@ -558,9 +558,9 @@ public:
       pinocchio::SE3 above_object_des_transform = des_transform;
       Eigen::VectorXd translation;
       if (object_frame == "metal")
-        translation = Eigen::Vector3d(0., 0.03, -0.06);
+        translation = Eigen::Vector3d(0., 0.01, -0.06);
       else
-        translation = Eigen::Vector3d(0., -0.06, -0.03);
+        translation = Eigen::Vector3d(0., -0.06, -0.01);
       translation = above_object_des_transform.rotation() * translation;
       above_object_des_transform.translation() += translation;
       q_waypoint_above_object_ = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
@@ -637,7 +637,7 @@ private:
 
   std::vector<std::vector<double>> q_inits_vec_ = {{0.06266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.86266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.74266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion front_ideal_rot_quat_ = Eigen::Quaternion(0.466896, -0.53408, 0.634467, -0.30695), top_ideal_rot_quat_ = Eigen::Quaternion(0.0136498, -0.624938, 0.780508, -0.00855614);
-  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.25, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.0, 0.0)}, {Eigen::Vector3d(1.0, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.25, -0.75, -M_PI)}};
+  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.0, 0.0, 0.0)}, {Eigen::Vector3d(0.75, 0.0, 0.0)}, {Eigen::Vector3d(0.75, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.0, -0.75, -M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};

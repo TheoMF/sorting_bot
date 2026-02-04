@@ -264,6 +264,7 @@ namespace joint_trajectory_publisher
         q_traj_ = std::get<0>(traj_value);
         q_dot_traj_ = std::get<1>(traj_value);
         planning_quintic_polynom_value_ = std::get<2>(traj_value);
+        traj_ready_ = true;
       }
     }
 
@@ -328,7 +329,7 @@ namespace joint_trajectory_publisher
     Eigen::VectorXd compute_q_ref()
     {
       Eigen::VectorXd q_ref = q_traj_;
-      Eigen::VectorXd q_err = planning_quintic_polynom_value_ * q_ref + (1.0 - planning_quintic_polynom_value_) * start_traj_q_ - current_q_;
+      Eigen::VectorXd q_err = q_ref - current_q_;
       std::vector<int> curr_add_integration_in_err = {0, 0, 0, 0, 0};
       bool changed_values = false;
       for (int idx = 0; idx < nq_; idx++)
@@ -343,7 +344,7 @@ namespace joint_trajectory_publisher
       }
       if (changed_values)
         add_integration_in_err = curr_add_integration_in_err;
-      return q_ref;
+      return q_ref + integrated_q_err_;
     }
 
     void joint_traj_pub_callback()
@@ -357,37 +358,38 @@ namespace joint_trajectory_publisher
       // Get current state
       std::tuple<ActionType, double> action = planner_manager_.get_current_action();
       ActionType action_type = std::get<0>(action);
-      // Only publish trajectory references when needed.
-      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q) && planner_manager_.trajectory_ready())
+      if (last_q_ == Eigen::VectorXd::Zero(nq_))
       {
-        if (!start_traj)
-        {
-          start_traj_q_ = current_q_ - params_.integration_done_coeff * integrated_q_err_;
-          start_traj_q_[2] += integrated_q_err_[2];
-          start_traj = true;
-        }
-
+        last_q_ = current_q_;
+        q_ref_ = current_q_;
+      }
+      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q) && traj_ready_)
+      {
         last_q_ref_ = q_ref_;
         q_ref_ = compute_q_ref();
-        Eigen::VectorXd q_traj = planning_quintic_polynom_value_ * q_ref_ + (1.0 - planning_quintic_polynom_value_) * start_traj_q_ + integrated_q_err_;
-        trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
-        joint_trajectory_msg.joint_names = params_.joint_names;
-        trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-        std::vector<double> q_ref_vec(q_traj.data(), q_traj.data() + q_traj.size());
-        std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
-        curr_point.positions = q_ref_vec;
-        curr_point.velocities = q_dot_ref_vec;
-
-        joint_trajectory_msg.points = {curr_point};
-        publisher_->publish(joint_trajectory_msg);
       }
       else
-        start_traj = false;
+      {
+        integrated_q_err_ += last_q_ - current_q_;
+        traj_ready_ = false;
+      }
+      last_q_ = current_q_;
+
+      trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+      joint_trajectory_msg.joint_names = params_.joint_names;
+      trajectory_msgs::msg::JointTrajectoryPoint curr_point;
+      std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
+      std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
+      curr_point.positions = q_ref_vec;
+      curr_point.velocities = q_dot_ref_vec;
+
+      joint_trajectory_msg.points = {curr_point};
+      publisher_->publish(joint_trajectory_msg);
     }
 
     int nq_ = 5;
     Eigen::VectorXd current_q_, q_ref_ = Eigen::VectorXd::Zero(nq_), last_q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
-                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), start_traj_q_;
+                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), last_q_ = Eigen::VectorXd::Zero(nq_);
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
@@ -415,7 +417,7 @@ namespace joint_trajectory_publisher
     ActionType last_action_ = NONE;
     std::string end_effector_name_ = "gripper_frame_link";
     std::thread trajectory_computing_thread_;
-    bool joint_states_callback_ready_ = false, robot_description_ready_ = false, start_traj = false;
+    bool joint_states_callback_ready_ = false, robot_description_ready_ = false, traj_ready_ = false;
   };
 }
 
