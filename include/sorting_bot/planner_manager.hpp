@@ -91,15 +91,30 @@ public:
     return transform_msg_to_SE3(stamped_transform.transform);
   }
 
+  bool object_is_seen_by_camera(const std::string &camera_frame, const std::string &child_frame)
+  {
+    int detection_count = 0;
+    int nanosec_delay = -1;
+    geometry_msgs::msg::TransformStamped previous_t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
+    for (int i = 0; i < 5; i++)
+    {
+      usleep(100000);
+      geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
+      if (t.header.stamp != previous_t.header.stamp)
+        detection_count++;
+      previous_t = t;
+    }
+    if (detection_count > 2)
+      return true;
+    return false;
+  }
+
   pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame, std::string camera_frame)
   {
-    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
+    if (!object_is_seen_by_camera(camera_frame, child_frame))
+      throw tf2::TransformException("Object is not seen by the camera currently.");
 
-    rclcpp::Time transform_time(t.header.stamp);
-    if ((ros_time_ - transform_time).nanoseconds() > 0.5 * std::pow(10.0, 9))
-    {
-      throw tf2::TransformException(" transform too old");
-    }
+    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
     pinocchio::SE3 in_camera_M_cardboard = transform_msg_to_SE3(t.transform);
     auto camera_transform_stamp = t.header.stamp;
     geometry_msgs::msg::TransformStamped other_t = tf_buffer_->lookupTransform(parent_frame, camera_frame, camera_transform_stamp);
@@ -217,12 +232,12 @@ public:
           std::cout << "got right box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
         }
         else
-          std::cout <<" got center box"<<std::endl;
+          std::cout << " got center box" << std::endl;
         pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
         in_world_M_box_ = in_world_M_base * in_base_M_box_;
         geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform("base_camera", box_frame, tf2::TimePointZero);
         rclcpp::Time transform_time(stamped_transform.header.stamp);
-        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_<< "duration as nano since last box det "<< (ros_time_ - transform_time).nanoseconds() << std::endl;
+        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_ << "duration as nano since last box det " << (ros_time_ - transform_time).nanoseconds() << std::endl;
         return true;
       }
       catch (const tf2::TransformException &ex)
@@ -279,11 +294,11 @@ public:
   void compute_searching_box_base_waypoints()
   {
     Eigen::Vector3d last_waypoint;
-    if (std::abs(base_pose_[1]) < 0.15)
+    if (std::abs(base_pose_[0]) < 0.15 && std::abs(base_pose_[1]) < 0.15)
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
       searching_box_base_waypoints_ = {
-          Eigen::Vector3d(base_pose_[0], 0., M_PI),
+          Eigen::Vector3d(0.0, 0., M_PI),
       };
   }
 
