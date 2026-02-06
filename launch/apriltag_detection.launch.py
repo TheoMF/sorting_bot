@@ -17,14 +17,16 @@ def launch_setup(
     camera = context.perform_substitution(camera_param).lower()
     if camera== "hand":
         param_camera_file = "param_hand_camera.yaml"
+        param_tag_file= "tags_objects.yaml"
     else:
         param_camera_file = "param_base_camera.yaml"
+        param_tag_file= "tags_box.yaml"
     apriltag_params = (
         PathJoinSubstitution(
             [
                 FindPackageShare("sorting_bot"),
                 "config",
-                "tags_36h11.yaml",
+                param_tag_file,
             ]
         ),
     )

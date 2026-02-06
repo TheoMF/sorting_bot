@@ -294,11 +294,11 @@ public:
   void compute_searching_box_base_waypoints()
   {
     Eigen::Vector3d last_waypoint;
-    if (std::abs(base_pose_[0]) < 0.15 && std::abs(base_pose_[1]) < 0.15)
+    if (std::abs(std::abs(base_pose_[1]) < 0.15))
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
       searching_box_base_waypoints_ = {
-          Eigen::Vector3d(0.0, 0., M_PI),
+          Eigen::Vector3d(0.0,  base_pose_[1], M_PI),
       };
   }
 
@@ -307,8 +307,8 @@ public:
     if (state_ == SEARCHING_OBJECTS)
     {
       std::vector<Eigen::VectorXd> base_waypoints = base_poses_waypoints_vec_[search_obj_base_waypoints_vec_idx_];
-      // for (Eigen::VectorXd &base_waypoint : base_waypoints)
-      //   base_waypoint += in_world_M_box_.translation();
+      for (Eigen::VectorXd &base_waypoint : base_waypoints)
+        base_waypoint += in_world_M_box_.translation();
       return base_waypoints;
     }
     else if (state_ == SEARCHING_BOX)
@@ -653,7 +653,7 @@ private:
 
   std::vector<std::vector<double>> q_inits_vec_ = {{0.06266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.86266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.74266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion front_ideal_rot_quat_ = Eigen::Quaternion(0.466896, -0.53408, 0.634467, -0.30695), top_ideal_rot_quat_ = Eigen::Quaternion(0.0136498, -0.624938, 0.780508, -0.00855614);
-  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.0, 0.0, 0.0)}, {Eigen::Vector3d(0.75, 0.0, 0.0)}, {Eigen::Vector3d(0.75, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.0, -0.75, -M_PI)}};
+  std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.25, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.0, 0.0)}, {Eigen::Vector3d(1.0, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.25, -0.75, -M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};
