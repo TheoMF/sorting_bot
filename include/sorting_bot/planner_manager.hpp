@@ -70,8 +70,11 @@ public:
     q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
     q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
     q_base_moving_ = Eigen::Map<Eigen::VectorXd>(params.q_base_moving.data(), params.q_base_moving.size());
-    for (std::vector<double> &q_init_vec : q_inits_vec_)
-      q_inits_.push_back(Eigen::Map<Eigen::VectorXd>(q_init_vec.data(), q_init_vec.size()));
+    std::vector<std::vector<double>> qs_searching_objects = {params.q_searching_object, params.q_searching_object, params.q_searching_object};
+    qs_searching_objects[1][0] -= params.q0_shift_q_searching_object;
+    qs_searching_objects[2][0] += params.q0_shift_q_searching_object;
+    for (std::vector<double> &q_searching_objects : qs_searching_objects)
+      q_inits_.push_back(Eigen::Map<Eigen::VectorXd>(q_searching_objects.data(), q_searching_objects.size()));
     q_inits_.push_back(q_base_moving_);
 
     objects_frame_ = params.objects_frame;
@@ -194,6 +197,8 @@ public:
       try
       {
         pinocchio::SE3 in_base_M_object = get_most_recent_transform(base_frame_, object_frame);
+        if (!object_is_seen_by_camera("camera", object_frame))
+          throw tf2::TransformException("Object is not seen by the camera currently.");
 
         pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_object, object_frame);
 
@@ -218,23 +223,29 @@ public:
     {
       try
       {
-        pinocchio::SE3 in_base_M_box_frame = get_in_base_M_object(base_frame_, box_frame, "base_camera");
+        pinocchio::SE3 in_base_M_box_frame = get_most_recent_transform(base_frame_, box_frame);
+        pinocchio::SE3 in_world_M_box_frame = get_most_recent_transform(world_frame_, box_frame);
+        if (!object_is_seen_by_camera("base_camera", box_frame))
+          throw tf2::TransformException("Object is not seen by the camera currently.");
+
         in_base_M_box_ = in_base_M_box_frame;
+        in_world_M_box_ = in_world_M_box_frame;
 
         if (box_frame == "box_left")
         {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
+          in_world_M_box_.translation() = in_world_M_box_.translation() + in_world_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
           std::cout << "got left box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
         }
         else if (box_frame == "box_right")
         {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
+          in_world_M_box_.translation() = in_world_M_box_.translation() + in_world_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
+
           std::cout << "got right box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
         }
         else
           std::cout << " got center box" << std::endl;
-        pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
-        in_world_M_box_ = in_world_M_base * in_base_M_box_;
         geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform("base_camera", box_frame, tf2::TimePointZero);
         rclcpp::Time transform_time(stamped_transform.header.stamp);
         std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_ << "duration as nano since last box det " << (ros_time_ - transform_time).nanoseconds() << std::endl;
@@ -298,7 +309,7 @@ public:
       searching_box_base_waypoints_ = {Eigen::Vector3d(base_pose_[0], base_pose_[1], M_PI)};
     else
       searching_box_base_waypoints_ = {
-          Eigen::Vector3d(0.0,  base_pose_[1], M_PI),
+          Eigen::Vector3d(base_pose_[0], in_world_M_box_.translation()[1], M_PI),
       };
   }
 
@@ -384,7 +395,10 @@ public:
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
+      if (q_init_idx_ != q_inits_.size() - 1)
+      {
+        actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
+      }
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
@@ -651,7 +665,6 @@ private:
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
   pinocchio::SE3 in_world_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), in_base_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
 
-  std::vector<std::vector<double>> q_inits_vec_ = {{0.06266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {0.86266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}, {-0.74266021327336462, -0.9541360500648688, 0.5675728915176872, 1.3330293046726223, 1.3299613430968509}};
   pinocchio::SE3::Quaternion front_ideal_rot_quat_ = Eigen::Quaternion(0.466896, -0.53408, 0.634467, -0.30695), top_ideal_rot_quat_ = Eigen::Quaternion(0.0136498, -0.624938, 0.780508, -0.00855614);
   std::vector<std::vector<Eigen::VectorXd>> base_poses_waypoints_vec_ = {{Eigen::Vector3d(0.25, 0.0, 0.0)}, {Eigen::Vector3d(1.0, 0.0, 0.0)}, {Eigen::Vector3d(1.0, -0.75, -M_PI_2)}, {Eigen::Vector3d(0.25, -0.75, -M_PI)}};
   int search_obj_base_waypoints_vec_idx_ = 0, q_init_idx_ = 0;

@@ -27,7 +27,9 @@ joint_trajectory_publisher:
     joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
     friction_compensation: [0.01,0.01,0.01,0.0,0.0]
-    q_base_moving : [0.062660, -1.704699, 1.578466, 0.525495, 1.412466]
+    q_base_moving : [0.062660, -1.704699, 1.628466, 0.355495, 1.322466]
+    q_searching_object: [0.06266021327336462, -0.6611457195787114, 0.19481556006147643, 1.555437137583913, 1.3299613430968509]
+    q0_shift_q_searching_object : 0.8
     inverse_kin:
       eps: 0.001
       max_iter: 1000

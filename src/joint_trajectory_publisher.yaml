@@ -86,6 +86,15 @@ joint_trajectory_publisher:
       description: "Configuration while base is moving."
       validation:
         not_empty<>: []
+  q_searching_object:
+      type: double_array
+      description: "Configuration for searching objects."
+      validation:
+        not_empty<>: []
+  q0_shift_q_searching_object:
+      type: double
+      default_value: 0.8
+      description: "Shift on q0 to create new configurations for searching objects."
   inverse_kin:
     eps:
       type: double
