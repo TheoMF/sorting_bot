@@ -8,19 +8,19 @@ joint_trajectory_publisher:
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
     objects_frame: ["plastic","glass","cardboard", "metal"]
     glass:
-      in_object_translation_gripper: [0.034, 0.042, 0.038]
+      in_object_translation_gripper: [0.038, 0.033, 0.03]
     cardboard:
-      in_object_translation_gripper: [0.04, 0.025, 0.025]
+      in_object_translation_gripper: [0.04, 0.025, 0.02]
     metal:
-      in_object_translation_gripper: [0.032, -0.02, 0.028]
+      in_object_translation_gripper: [0.04, -0.03, 0.021]
     plastic:
-      in_object_translation_gripper: [0.04, 0.03, 0.035]
+      in_object_translation_gripper: [0.045, 0.025, 0.025]
     world_frame: "odom"
     base_frame: "base_footprint"
     rate: 100.0
     use_genetic_algo: false
-    motion_planning_time_coeff: 2.0
-    wait_duration_before_vision_action: 1.8
+    motion_planning_time_coeff: 1.6
+    wait_duration_before_vision_action: 1.5
     box_dist_while_placing : 0.27
     integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
     integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
@@ -35,7 +35,7 @@ joint_trajectory_publisher:
       max_iter: 1000
       dt: 0.1
       damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.03, 0.008, 1.0]
+      error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
     genetic_algo_inverse_kin:
       population_size: 3000
       max_iter: 30
