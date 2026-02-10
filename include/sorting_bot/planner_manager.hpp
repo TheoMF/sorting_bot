@@ -19,7 +19,7 @@ enum ActionType
 {
   NONE,
   MOVE_JAW,
-  SET_MOVE_BASE_Q,
+  SET_MOVING_BASE_CONFIGURATION,
   MOVE_BASE,
   WAIT,
   FOLLOW_TRAJ,
@@ -377,7 +377,7 @@ public:
     if ((action_type == WAIT && time >= std::get<1>(current_action)) || (action_type == MOVE_JAW) ||
         (action_type == SEARCH_OBJECT) || (action_type == SEARCH_BOX) || (action_type == MOVE_BASE && nav_result == rclcpp_action::ResultCode::SUCCEEDED))
       return true;
-    if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
+    if (action_type == FOLLOW_TRAJ || action_type == SET_MOVING_BASE_CONFIGURATION)
     {
       if (trajectory_ready_ && goal_pose_achieved(q))
         return true;
@@ -417,7 +417,7 @@ public:
     case SEARCHING_BOX:
       if (robot_name_ == "LeKiwi")
       {
-        actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 2.0));
+        actions.push_back(std::make_tuple(SET_MOVING_BASE_CONFIGURATION, 2.0));
         actions.push_back(std::make_tuple(MOVE_BASE, 3.0));
       }
       actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
@@ -434,7 +434,7 @@ public:
       actions.push_back(std::make_tuple(MOVE_JAW, 1.0));
       actions.push_back(std::make_tuple(WAIT, 0.5));
       if (robot_name_ == "LeKiwi")
-        actions.push_back(std::make_tuple(SET_MOVE_BASE_Q, 1.0));
+        actions.push_back(std::make_tuple(SET_MOVING_BASE_CONFIGURATION, 1.0));
       break;
     }
     return actions;
@@ -457,7 +457,7 @@ public:
         {
           do_search_box_action();
         }
-        if (action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q)
+        if (action_type == FOLLOW_TRAJ || action_type == SET_MOVING_BASE_CONFIGURATION)
         {
           if (trajectory_computing_thread_.joinable())
             trajectory_computing_thread_.join();
@@ -530,7 +530,7 @@ public:
     }
     std::tuple<ActionType, double> action = actions_[0];
     ActionType action_type = std::get<0>(action);
-    if ((action_type != FOLLOW_TRAJ && action_type != SET_MOVE_BASE_Q) || trajectory_ready_)
+    if ((action_type != FOLLOW_TRAJ && action_type != SET_MOVING_BASE_CONFIGURATION) || trajectory_ready_)
       time_ += 0.01;
   }
 
@@ -545,7 +545,7 @@ public:
   {
     std::tuple<ActionType, double> action = actions_[0];
     ActionType action_type = std::get<0>(action);
-    if (action_type == SET_MOVE_BASE_Q)
+    if (action_type == SET_MOVING_BASE_CONFIGURATION)
     {
       q_waypoints = {q_base_moving_};
       std::cout << "setting q_base_moving " << std::endl;

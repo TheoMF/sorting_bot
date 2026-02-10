@@ -2,6 +2,8 @@
 #include <string>
 #include <chrono>
 #include <unistd.h>
+#include <stdexcept>
+#include <cstdlib>
 
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -15,7 +17,6 @@
 
 #include "sorting_bot/planner_manager.hpp"
 
-using namespace std::chrono_literals;
 namespace joint_trajectory_publisher
 {
   class JointTrajectoryPublisher : public rclcpp::Node
@@ -26,8 +27,8 @@ namespace joint_trajectory_publisher
     {
       if (!load_parameters())
       {
-        RCLCPP_ERROR(this->get_logger(), "Got issues loading the parameters.");
-        return;
+        RCLCPP_ERROR(this->get_logger(), "Couldn't load the parameters, stopping the node.");
+        throw std::runtime_error("Failed to load parameters");
       }
 
       // Joint trajectory publisher
@@ -72,14 +73,12 @@ namespace joint_trajectory_publisher
 
       // Timer to publish joint trajectory
       joint_traj_pub_timer_ = this->create_wall_timer(
-          10ms, std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
+          std::chrono::milliseconds(10), std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
 
       // TF related attributes.
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-
-      RCLCPP_INFO(this->get_logger(), "finished setup");
     }
 
   private:
@@ -110,7 +109,6 @@ namespace joint_trajectory_publisher
       }
       current_q_ = Eigen::Map<Eigen::VectorXd>(current_q_vec.data(), current_q_vec.size());
       joint_states_callback_ready_ = true;
-      RCLCPP_DEBUG(this->get_logger(), "current q %f %f %f %f %f", current_q_vec[0], current_q_vec[1], current_q_vec[2], current_q_vec[3], current_q_vec[4]);
     }
 
     void robot_description_callback(const std_msgs::msg::String &msg)
@@ -129,12 +127,6 @@ namespace joint_trajectory_publisher
       {
         RCLCPP_INFO(this->get_logger(), "Goal accepted by navigation server");
       }
-    }
-
-    void nav_feedback_callback(rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateThroughPoses>::SharedPtr,
-                               const std::shared_ptr<const nav2_msgs::action::NavigateThroughPoses::Feedback> feedback)
-    {
-      RCLCPP_DEBUG(this->get_logger(), "Nav distance to goal: %f", feedback->distance_remaining);
     }
 
     void nav_result_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateThroughPoses>::WrappedResult &result)
@@ -173,16 +165,12 @@ namespace joint_trajectory_publisher
       // Create navigation's waypoints msg.
       auto goal_msg = nav2_msgs::action::NavigateThroughPoses::Goal();
       for (const auto &base_pose : base_poses)
-      {
         goal_msg.poses.push_back(base_pose_to_pose_msg(base_pose));
-      }
 
       // Add callbacks to track navigation progress.
       auto send_goal_options = rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses>::SendGoalOptions();
       send_goal_options.goal_response_callback =
           std::bind(&JointTrajectoryPublisher::nav_goal_response_callback, this, std::placeholders::_1);
-      send_goal_options.feedback_callback =
-          std::bind(&JointTrajectoryPublisher::nav_feedback_callback, this, std::placeholders::_1, std::placeholders::_2);
       send_goal_options.result_callback =
           std::bind(&JointTrajectoryPublisher::nav_result_callback, this, std::placeholders::_1);
       navigation_action_client_->async_send_goal(goal_msg, send_goal_options);
@@ -205,11 +193,11 @@ namespace joint_trajectory_publisher
       pose_msg.pose.position.y = base_pose[1];
       pose_msg.pose.position.z = 0.0;
       Eigen::AngleAxisd angle_axis_rot = Eigen::AngleAxisd(base_pose[2], Eigen::Vector3d::UnitZ());
-      Eigen::Quaterniond quat = Eigen::Quaterniond(angle_axis_rot.toRotationMatrix());
-      pose_msg.pose.orientation.x = quat.x();
-      pose_msg.pose.orientation.y = quat.y();
-      pose_msg.pose.orientation.z = quat.z();
-      pose_msg.pose.orientation.w = quat.w();
+      Eigen::Quaterniond quat_rot = Eigen::Quaterniond(angle_axis_rot.toRotationMatrix());
+      pose_msg.pose.orientation.x = quat_rot.x();
+      pose_msg.pose.orientation.y = quat_rot.y();
+      pose_msg.pose.orientation.z = quat_rot.z();
+      pose_msg.pose.orientation.w = quat_rot.w();
       return pose_msg;
     }
 
@@ -236,6 +224,20 @@ namespace joint_trajectory_publisher
         joint_trajectory_msg.points = {curr_point};
         lekiwi_gripper_publisher_->publish(joint_trajectory_msg);
       }
+    }
+
+    void send_joint_trajectory_msg(const Eigen::VectorXd &q_ref, const Eigen::VectorXd &q_dot_ref)
+    {
+      trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+      joint_trajectory_msg.joint_names = params_.joint_names;
+      trajectory_msgs::msg::JointTrajectoryPoint joint_trajectory_point_msg;
+      std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
+      std::vector<double> q_dot_ref_vec(q_dot_ref.data(), q_dot_ref.data() + q_dot_ref.size());
+      joint_trajectory_point_msg.positions = q_ref_vec;
+      joint_trajectory_point_msg.velocities = q_dot_ref_vec;
+
+      joint_trajectory_msg.points = {joint_trajectory_point_msg};
+      publisher_->publish(joint_trajectory_msg);
     }
 
     void handle_nav_goal_publication()
@@ -286,7 +288,7 @@ namespace joint_trajectory_publisher
         handle_nav_goal_publication();
         break;
       }
-      case SET_MOVE_BASE_Q:
+      case SET_MOVING_BASE_CONFIGURATION:
       {
         update_traj_references();
         break;
@@ -301,12 +303,6 @@ namespace joint_trajectory_publisher
       // Add log if we started an action.
       if (action_type != last_action_)
       {
-        if (last_action_ == SET_MOVE_BASE_Q || last_action_ == FOLLOW_TRAJ)
-        {
-          std::cout << "finished traj with curr q " << current_q_ << " q_ref_ " << q_ref_ << " integ " << integrated_q_err_ << std::endl;
-          RCLCPP_INFO(this->get_logger(), "add_integration_in_err %d %d %d %d %d", add_integration_in_err[0], add_integration_in_err[1], add_integration_in_err[2], add_integration_in_err[3], add_integration_in_err[4]);
-        }
-
         last_action_ = action_type;
         RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action_type));
       }
@@ -317,88 +313,74 @@ namespace joint_trajectory_publisher
         nav_result_ = rclcpp_action::ResultCode::UNKNOWN;
     }
 
-    double sign(const double &val)
+    void update_integrated_q_err(const Eigen::VectorXd &q_err)
     {
-      if (val > 0.0)
-        return 1.0;
-      else if (val < 0.0)
-        return -1.0;
-      return 0.0;
-    }
-
-    Eigen::VectorXd compute_q_ref()
-    {
-      Eigen::VectorXd q_ref = q_traj_;
-      Eigen::VectorXd q_err = q_ref - current_q_;
-      std::vector<int> curr_add_integration_in_err = {0, 0, 0, 0, 0};
-      bool changed_values = false;
-      for (int idx = 0; idx < nq_; idx++)
-      {
-        q_ref[idx] += sign(q_err[idx]) * params_.friction_compensation[idx];
-        if (std::abs(q_err[idx]) > params_.joints_des_precision[idx] * 0.1)
-        {
-          curr_add_integration_in_err[idx] = 1;
-          changed_values = true;
-          if (over_traj_total_duration_)
-            integrated_q_err_[idx] += params_.integration_coeffs_after_traj[idx] / params_.rate * q_err[idx];
-          else
-            integrated_q_err_[idx] += params_.integration_coeffs_during_traj[idx] / params_.rate * q_err[idx];
-        }
-      }
-      if (changed_values)
-        add_integration_in_err = curr_add_integration_in_err;
-      return q_ref + integrated_q_err_;
-    }
-
-    void joint_traj_pub_callback()
-    {
-      // wait for joint states callback and robot description
-      if (joint_states_callback_ready_ == false || robot_description_ready_ == false)
-        return;
-      planner_manager_.update_state(current_q_, base_pose_, nav_result_, this->get_clock()->now());
-      do_actions();
-
-      // Get current state
       std::tuple<ActionType, double> action = planner_manager_.get_current_action();
       ActionType action_type = std::get<0>(action);
-      if (last_q_ == Eigen::VectorXd::Zero(nq_))
-      {
-        last_q_ = current_q_;
-        q_ref_ = current_q_;
-      }
-      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVE_BASE_Q) && traj_ready_)
-      {
-        last_q_ref_ = q_ref_;
-        q_ref_ = compute_q_ref();
-      }
+      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVING_BASE_CONFIGURATION) && traj_ready_)
+        for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
+        {
+          if (over_traj_total_duration_)
+            integrated_q_err_[joint_idx] += params_.integration_coeffs_after_traj[joint_idx] / params_.rate * q_err[joint_idx];
+          else
+            integrated_q_err_[joint_idx] += params_.integration_coeffs_during_traj[joint_idx] / params_.rate * q_err[joint_idx];
+        }
       else
       {
         integrated_q_err_ += last_q_ - current_q_;
         traj_ready_ = false;
       }
+    }
+
+    Eigen::VectorXd get_q_ref(const Eigen::VectorXd &q_err)
+    {
+      Eigen::VectorXd friction_compensation = Eigen::VectorXd::Zero(nq_);
+      for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
+      {
+        // Add friction compensation.
+        if (q_err[joint_idx] > 0)
+          friction_compensation[joint_idx] = params_.friction_compensation[joint_idx];
+        else if (q_err[joint_idx] < 0)
+          friction_compensation[joint_idx] = -params_.friction_compensation[joint_idx];
+      }
+      return q_traj_ + friction_compensation + integrated_q_err_;
+    }
+
+    void joint_traj_pub_callback()
+    {
+      // Wait for joint states callback and robot description.
+      if (joint_states_callback_ready_ == false || robot_description_ready_ == false)
+        return;
+
+      // Initialize attributes while waiting for first trajectory to be set.
+      if (first_joint_traj_pub_)
+      {
+        last_q_ = current_q_;
+        q_traj_ = current_q_;
+        first_joint_traj_pub_ = false;
+      }
+
+      // Update planner manager and perform needed actions.
+      planner_manager_.update_state(current_q_, base_pose_, nav_result_, this->get_clock()->now());
+      do_actions();
+
+      // Compute and send joint trajectory message.
+      Eigen::VectorXd q_err = q_traj_ - current_q_;
+      update_integrated_q_err(q_err);
+      Eigen::VectorXd q_ref = get_q_ref(q_err);
+      send_joint_trajectory_msg(q_ref, q_dot_traj_);
+
       last_q_ = current_q_;
-
-      trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
-      joint_trajectory_msg.joint_names = params_.joint_names;
-      trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-      std::vector<double> q_ref_vec(q_ref_.data(), q_ref_.data() + q_ref_.size());
-      std::vector<double> q_dot_ref_vec(q_dot_traj_.data(), q_dot_traj_.data() + q_dot_traj_.size());
-      curr_point.positions = q_ref_vec;
-      curr_point.velocities = q_dot_ref_vec;
-
-      joint_trajectory_msg.points = {curr_point};
-      publisher_->publish(joint_trajectory_msg);
     }
 
     int nq_ = 5;
-    Eigen::VectorXd current_q_, q_ref_ = Eigen::VectorXd::Zero(nq_), last_q_ref_ = Eigen::VectorXd::Zero(nq_), q_traj_ = Eigen::VectorXd::Zero(nq_), q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
-                                base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), last_q_ = Eigen::VectorXd::Zero(nq_);
+    Eigen::VectorXd current_q_, q_traj_, q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
+                                         base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), last_q_;
 
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
         parameter_listener_;
     joint_trajectory_publisher::Params params_;
-    std::vector<int> add_integration_in_err = {0, 0, 0, 0, 0};
 
     std::vector<Eigen::VectorXd> q_waypoints, last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
     rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_;
@@ -416,7 +398,7 @@ namespace joint_trajectory_publisher
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     PlannerManager planner_manager_;
-    bool over_traj_total_duration_ = false;
+    bool over_traj_total_duration_ = false, first_joint_traj_pub_ = true;
     ActionType last_action_ = NONE;
     std::string end_effector_name_ = "gripper_frame_link";
     std::thread trajectory_computing_thread_;
@@ -427,7 +409,17 @@ namespace joint_trajectory_publisher
 int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<joint_trajectory_publisher::JointTrajectoryPublisher>());
+  auto node = std::make_shared<joint_trajectory_publisher::JointTrajectoryPublisher>();
+  try
+  {
+    rclcpp::spin(node);
+  }
+  catch (const std::exception &e)
+  {
+    RCLCPP_FATAL(node->get_logger(), "Exception during node runtime : %s", e.what());
+    rclcpp::shutdown();
+    return EXIT_FAILURE;
+  }
   rclcpp::shutdown();
-  return 0;
+  return EXIT_SUCCESS;
 }
