@@ -2,10 +2,9 @@
 joint_trajectory_publisher:
   ros__parameters:
     robot_name: "LeKiwi"
-    q_init: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
-    q_waypoint_up: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
     joint_trajectory_topic: "/lekiwi_controller/joint_trajectory"
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
+    ee_frame_name : "gripper_frame_link"
     objects_frame: ["plastic","glass","cardboard", "metal"]
     glass:
       in_object_translation_gripper: [0.038, 0.033, 0.03]
@@ -18,15 +17,18 @@ joint_trajectory_publisher:
     world_frame: "odom"
     base_frame: "base_footprint"
     rate: 100.0
+    nq: 5
     use_genetic_algo: false
     motion_planning_time_coeff: 1.6
     wait_duration_before_vision_action: 1.5
     box_dist_while_placing : 0.27
+    box_width: 0.2
+    box_length: 0.325
     integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
     integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
     joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    friction_compensation: [0.01,0.01,0.01,0.0,0.0]
+    friction_compensation: [0.0,0.0,0.0,0.0,0.0]
     q_base_moving : [0.062660, -1.704699, 1.628466, 0.355495, 1.322466]
     q_searching_object: [0.06266021327336462, -0.6611457195787114, 0.19481556006147643, 1.555437137583913, 1.3299613430968509]
     q0_shift_q_searching_object : 0.8

@@ -30,54 +30,60 @@ enum ActionType
 class PlannerManager
 {
 public:
-  PlannerManager()
-  {
-    q_ = Eigen::VectorXd::Zero(5);
-    q_waypoint_above_object_ = Eigen::VectorXd::Zero(5);
-    tf_buffer_ = nullptr;
-    robot_name_ = "SO-101";
-    double box_width = 0.24, box_length = 0.315;
-    Eigen::Quaterniond rot_x_axis_pi_quat(0., 1., 0., 0.);
-    for (double i = -1.; i == -1. || i == 1.; i += 2.)
-    {
-      for (double j = -1.; j == -1. || j == 1.; j += 2.)
-      {
-        Eigen::Vector3d box_to_compartment_trans(i * box_length / 4.0, 0.18, -box_width / 2.0 + j * box_width / 4.0);
-        pinocchio::SE3 in_box_M_compartment(Eigen::Quaterniond(0., 1., 0., 0.), box_to_compartment_trans);
-        in_box_M_compartments_.push_back(in_box_M_compartment);
-      }
-    }
-  }
+  PlannerManager() {}
 
-  void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer, const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster, std::string urdf, std::string ee_frame_name, joint_trajectory_publisher::Params params)
+  void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer,
+                  const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster,
+                  const std::string &urdf,
+                  const joint_trajectory_publisher::Params &params)
   {
+    // Set tf attributes.
     tf_buffer_ = tf_buffer;
     tf_broadcaster_ = tf_broadcaster;
-    motion_planner.initialize(urdf, ee_frame_name, params);
+
+    // Set ROS parameters related attributes.
+    objects_frame_ = params.objects_frame;
     joints_des_precision_ = params.joints_des_precision;
     robot_name_ = params.robot_name;
     world_frame_ = params.world_frame;
     base_frame_ = params.base_frame;
-    ee_frame_name_ = ee_frame_name;
+    ee_frame_name_ = params.ee_frame_name;
     box_dist_while_placing_ = params.box_dist_while_placing;
     wait_duration_before_vision_action_ = params.wait_duration_before_vision_action;
+    q_base_moving_ = Eigen::Map<Eigen::VectorXd>(params.q_base_moving.data(), params.q_base_moving.size());
+    initialize_in_box_M_compartments(params.box_width, params.box_length);
+    motion_planner.initialize(urdf, params);
 
+    // Set in_object_translation_grasp_map.
     for (std::string &object_frame : params.objects_frame)
     {
       std::vector<double> in_object_translation_gripper = params.objects_frame_map.at(object_frame).in_object_translation_gripper;
       in_object_translation_grasp_map_.insert({object_frame, Eigen::Map<Eigen::Vector3d>(in_object_translation_gripper.data(), in_object_translation_gripper.size())});
     }
-    q_waypoint_up_ = Eigen::Map<Eigen::VectorXd>(params.q_waypoint_up.data(), params.q_waypoint_up.size());
-    q_init_ = Eigen::Map<Eigen::VectorXd>(params.q_init.data(), params.q_init.size());
-    q_base_moving_ = Eigen::Map<Eigen::VectorXd>(params.q_base_moving.data(), params.q_base_moving.size());
+
+    // Set qs_searching_objects.
     std::vector<std::vector<double>> qs_searching_objects = {params.q_searching_object, params.q_searching_object, params.q_searching_object};
     qs_searching_objects[1][0] -= params.q0_shift_q_searching_object;
     qs_searching_objects[2][0] += params.q0_shift_q_searching_object;
     for (std::vector<double> &q_searching_objects : qs_searching_objects)
-      q_inits_.push_back(Eigen::Map<Eigen::VectorXd>(q_searching_objects.data(), q_searching_objects.size()));
-    q_inits_.push_back(q_base_moving_);
+      qs_searching_objects_.push_back(Eigen::Map<Eigen::VectorXd>(q_searching_objects.data(), q_searching_objects.size()));
+    qs_searching_objects_.push_back(q_base_moving_);
+  }
 
-    objects_frame_ = params.objects_frame;
+  void initialize_in_box_M_compartments(const double &box_width, const double &box_length)
+  {
+    Eigen::Quaterniond x_axis_rot_pi_quat(0., 1., 0., 0.);
+    for (double length_idx = -1.; length_idx == -1. || length_idx == 1.; length_idx += 2.)
+    {
+      for (double width_idx = -1.; width_idx == -1. || width_idx == 1.; width_idx += 2.)
+      {
+        Eigen::Vector3d box_to_compartment_trans(length_idx * box_length / 4.0,
+                                                 0.18,
+                                                 -box_width / 2.0 + width_idx * box_width / 4.0);
+        pinocchio::SE3 in_box_M_compartment(x_axis_rot_pi_quat, box_to_compartment_trans);
+        in_box_M_compartments_.push_back(in_box_M_compartment);
+      }
+    }
   }
 
   pinocchio::SE3 transform_msg_to_SE3(const geometry_msgs::msg::Transform &transform)
@@ -110,19 +116,6 @@ public:
     if (detection_count > 2)
       return true;
     return false;
-  }
-
-  pinocchio::SE3 get_in_base_M_object(const std::string &parent_frame, const std::string &child_frame, std::string camera_frame)
-  {
-    if (!object_is_seen_by_camera(camera_frame, child_frame))
-      throw tf2::TransformException("Object is not seen by the camera currently.");
-
-    geometry_msgs::msg::TransformStamped t = tf_buffer_->lookupTransform(camera_frame, child_frame, tf2::TimePointZero);
-    pinocchio::SE3 in_camera_M_cardboard = transform_msg_to_SE3(t.transform);
-    auto camera_transform_stamp = t.header.stamp;
-    geometry_msgs::msg::TransformStamped other_t = tf_buffer_->lookupTransform(parent_frame, camera_frame, camera_transform_stamp);
-    pinocchio::SE3 in_base_M_camera = transform_msg_to_SE3(other_t.transform);
-    return in_base_M_camera * in_camera_M_cardboard;
   }
 
   void publish_transform(const pinocchio::SE3 &transform, const std::string parent_frame, std::string child_frame)
@@ -205,12 +198,12 @@ public:
         found_transform = true;
         current_target_ = make_tuple(object_frame, in_base_M_gripper);
         objects_done_.push_back(object_frame);
-        std::cout << "found object  " << object_frame.c_str() << std::endl;
+        RCLCPP_INFO(logger_, "found object : %s", object_frame.c_str());
         break;
       }
       catch (const tf2::TransformException &ex)
       {
-        // std::cout << "didn't found transform for object " << object_frame.c_str() << " error : " << ex.what() << std::endl;
+        RCLCPP_DEBUG(logger_, "didn't found %s object frame, error : %s", object_frame.c_str(), ex.what());
       }
     }
     return found_transform;
@@ -218,42 +211,30 @@ public:
 
   bool find_box_transform()
   {
-    std::vector<std::string> box_frames = {"box_center", "box_left", "box_right"};
-    for (std::string &box_frame : box_frames)
+    for (std::string &box_frame : box_frames_)
     {
       try
       {
+        // Ensure we are seeing the object.
         pinocchio::SE3 in_base_M_box_frame = get_most_recent_transform(base_frame_, box_frame);
-        pinocchio::SE3 in_world_M_box_frame = get_most_recent_transform(world_frame_, box_frame);
         if (!object_is_seen_by_camera("base_camera", box_frame))
           throw tf2::TransformException("Object is not seen by the camera currently.");
 
+        // Compute in_base_M_box with regards to the tag we found.
         in_base_M_box_ = in_base_M_box_frame;
-        in_world_M_box_ = in_world_M_box_frame;
-
         if (box_frame == "box_left")
-        {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
-          in_world_M_box_.translation() = in_world_M_box_.translation() + in_world_M_box_.rotation() * Eigen::Vector3d(0.071, 0., 0.);
-          std::cout << "got left box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
-        }
         else if (box_frame == "box_right")
-        {
           in_base_M_box_.translation() = in_base_M_box_.translation() + in_base_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
-          in_world_M_box_.translation() = in_world_M_box_.translation() + in_world_M_box_.rotation() * Eigen::Vector3d(-0.064, 0., 0.);
 
-          std::cout << "got right box, init transform " << in_base_M_box_frame.translation() << " new transform " << in_base_M_box_.translation() << std::endl;
-        }
-        else
-          std::cout << " got center box" << std::endl;
-        geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform("base_camera", box_frame, tf2::TimePointZero);
-        rclcpp::Time transform_time(stamped_transform.header.stamp);
-        std::cout << "found box, in_world_M_box_ is  " << in_world_M_box_ << "duration as nano since last box det " << (ros_time_ - transform_time).nanoseconds() << std::endl;
+        // Compute in_world_M_box.
+        pinocchio::SE3 in_world_M_base = get_most_recent_transform(world_frame_, base_frame_);
+        in_world_M_box_ = in_world_M_base * in_base_M_box_;
         return true;
       }
       catch (const tf2::TransformException &ex)
       {
-        std::cout << "didn't found " << box_frame << " frame, error : " << ex.what() << std::endl;
+        RCLCPP_INFO(logger_, "didn't found %s frame, error : %s", box_frame.c_str(), ex.what());
       }
     }
 
@@ -264,7 +245,7 @@ public:
   {
     if (!find_next_object_to_grasp_transform())
     {
-      std::cout << "didn't found object, restart state  " << std::endl;
+      RCLCPP_INFO(logger_, "didn't found objects, restart state actions");
       current_state_action_were_sent_ = false;
     }
     else if (state_ == SEARCHING_OBJECTS)
@@ -335,9 +316,11 @@ public:
         return {Eigen::Vector3d(box_dist_while_placing_ + in_world_M_box_.translation()[0], in_world_M_box_.translation()[1], M_PI)};
       }
     }
-
-    std::cout << " should never happen" << std::endl;
-    return {Eigen::Vector3d(0.0, 0., 0.0)};
+    else
+    {
+      RCLCPP_ERROR(logger_, "Retrieving base waypoints in an unexpected state, state idx : %d", static_cast<int>(state_));
+      return {Eigen::Vector3d(0.0, 0., 0.0)};
+    }
   }
 
   void update_nav_action(const rclcpp_action::ResultCode &nav_result)
@@ -352,7 +335,6 @@ public:
       case rclcpp_action::ResultCode::UNKNOWN:
         break;
       default:
-        std::cout << "navigation failed, restarting it" << std::endl;
         goal_base_pose_published_ = false;
         last_nav_succeed = false;
         time_ = 0.;
@@ -395,10 +377,7 @@ public:
       if (robot_name_ == "LeKiwi")
         actions.push_back(std::make_tuple(MOVE_BASE, 1.0));
       actions.push_back(std::make_tuple(FOLLOW_TRAJ, 1.));
-      if (q_init_idx_ != q_inits_.size() - 1)
-      {
-        actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
-      }
+      actions.push_back(std::make_tuple(WAIT, wait_duration_before_vision_action_));
       actions.push_back(std::make_tuple(SEARCH_OBJECT, 1.0));
       break;
     case GOING_TO_GRASP_POSE:
@@ -462,7 +441,6 @@ public:
           if (trajectory_computing_thread_.joinable())
             trajectory_computing_thread_.join();
           trajectory_computing_thread_ = std::thread(&PlannerManager::compute_trajectory, this);
-          std::cout << "new traj will start soon" << std::endl;
         }
       }
     }
@@ -486,7 +464,7 @@ public:
       {
         update_nav_action(nav_result);
       }
-      if (action_is_finished(q_, time_, action, nav_result))
+      if (action_is_finished(current_q_, time_, action, nav_result))
       {
         actions_.erase(actions_.begin());
         time_ = 0.;
@@ -495,9 +473,9 @@ public:
     }
   }
 
-  void update_state(const Eigen::VectorXd &q, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result, const rclcpp::Time ros_time)
+  void update_state(const Eigen::VectorXd &current_q, const Eigen::VectorXd &base_pose, const rclcpp_action::ResultCode &nav_result, const rclcpp::Time ros_time)
   {
-    q_ = q;
+    current_q_ = current_q;
     base_pose_ = base_pose;
     ros_time_ = ros_time;
     update_actions(nav_result);
@@ -516,7 +494,7 @@ public:
       if (state_order_[new_state_idx] == SEARCHING_BOX && robot_name_ == "SO-101")
         new_state_idx++;
       state_ = state_order_[new_state_idx];
-      std::cout << "new state idx " << new_state_idx << std::endl;
+      RCLCPP_INFO(logger_, "New state idx : %d", new_state_idx);
       if (state_ == SEARCHING_BOX)
         compute_searching_box_base_waypoints();
     }
@@ -543,38 +521,32 @@ public:
 
   void compute_trajectory()
   {
+    RCLCPP_INFO(logger_, "Start new motion planning.");
     std::tuple<ActionType, double> action = actions_[0];
     ActionType action_type = std::get<0>(action);
     if (action_type == SET_MOVING_BASE_CONFIGURATION)
     {
       q_waypoints = {q_base_moving_};
-      std::cout << "setting q_base_moving " << std::endl;
     }
 
     else if (state_ == SEARCHING_OBJECTS)
     {
-      if (robot_name_ == "SO-101")
-        q_waypoints = {q_init_};
-      else
-      {
-        q_waypoints = {q_inits_[q_init_idx_]};
-        q_init_idx_ = (q_init_idx_ + 1) % q_inits_.size();
-        if (q_init_idx_ == 0)
-          search_obj_base_waypoints_vec_idx_ = (search_obj_base_waypoints_vec_idx_ + 1) % base_poses_waypoints_vec_.size();
-      }
+      q_waypoints = {qs_searching_objects_[q_init_idx_]};
+      q_init_idx_ = (q_init_idx_ + 1) % qs_searching_objects_.size();
+      if (q_init_idx_ == 0)
+        search_obj_base_waypoints_vec_idx_ = (search_obj_base_waypoints_vec_idx_ + 1) % base_poses_waypoints_vec_.size();
     }
     else if (state_ == GOING_TO_GRASP_POSE)
     {
       pinocchio::SE3 in_base_M_object = std::get<1>(current_target_);
-      pinocchio::SE3 current_in_base_M_ee = motion_planner.get_frame_pose_at_q(q_, ee_frame_name_);
+      pinocchio::SE3 current_in_base_M_ee = motion_planner.get_frame_pose_at_q(current_q_, ee_frame_name_);
       double object_yaw_angle = std::atan2(in_base_M_object.translation()[1], in_base_M_object.translation()[0]);
       double ee_yaw_angle = std::atan2(current_in_base_M_ee.translation()[1], current_in_base_M_ee.translation()[0]);
       Eigen::AngleAxisd z_angle_axis_rot = Eigen::AngleAxisd(-(ee_yaw_angle - object_yaw_angle), Eigen::Vector3d::UnitZ());
       pinocchio::SE3 des_in_base_M_ee = current_in_base_M_ee;
       des_in_base_M_ee.translation() = z_angle_axis_rot.toRotationMatrix() * current_in_base_M_ee.translation();
       des_in_base_M_ee.rotation() = z_angle_axis_rot.toRotationMatrix() * des_in_base_M_ee.rotation();
-      Eigen::VectorXd des_q = motion_planner.get_inverse_kinematic_at_pose(q_, des_in_base_M_ee);
-      std::cout << "object_translation \n " << in_base_M_object.translation() << std::endl;
+      Eigen::VectorXd des_q = motion_planner.get_inverse_kinematic_at_pose(current_q_, des_in_base_M_ee);
       q_waypoints = {des_q};
     }
     else if (state_ == GRASPING)
@@ -584,7 +556,7 @@ public:
 
       new_transform = des_transform;
 
-      Eigen::VectorXd q_goal = motion_planner.get_inverse_kinematic_at_pose(q_, des_transform);
+      Eigen::VectorXd q_goal = motion_planner.get_inverse_kinematic_at_pose(current_q_, des_transform);
       pinocchio::SE3 above_object_des_transform = des_transform;
       Eigen::VectorXd translation;
       if (object_frame == "metal")
@@ -593,36 +565,35 @@ public:
         translation = Eigen::Vector3d(0., -0.06, -0.01);
       translation = above_object_des_transform.rotation() * translation;
       above_object_des_transform.translation() += translation;
-      q_waypoint_above_object_ = motion_planner.get_inverse_kinematic_at_pose(q_, above_object_des_transform);
-      q_waypoints = {q_waypoint_above_object_, q_goal};
+      Eigen::VectorXd q_waypoint_above_object = motion_planner.get_inverse_kinematic_at_pose(current_q_, above_object_des_transform);
+      q_waypoints = {q_waypoint_above_object, q_goal};
       Eigen::Vector3d des_trans = des_transform.translation();
     }
     else if (state_ == PLACING)
     {
-      pinocchio::SE3 in_base_M_ee = motion_planner.get_frame_pose_at_q(q_, ee_frame_name_);
+      pinocchio::SE3 in_base_M_ee = motion_planner.get_frame_pose_at_q(current_q_, ee_frame_name_);
       pinocchio::SE3 first_waypoint_in_base_M_ee = in_base_M_ee;
       first_waypoint_in_base_M_ee.translation()[2] += 0.04;
-      Eigen::VectorXd q_first_waypoint = motion_planner.get_inverse_kinematic_at_pose(q_, first_waypoint_in_base_M_ee);
+      Eigen::VectorXd q_first_waypoint = motion_planner.get_inverse_kinematic_at_pose(current_q_, first_waypoint_in_base_M_ee);
 
-      std::cout << "start computing placing traj" << std::endl;
       std::string object = std::get<0>(current_target_);
       auto it = find(objects_frame_.begin(), objects_frame_.end(), object);
-      int object_idx = it - objects_frame_.begin();
-      std::cout << "object idx " << object_idx << std::endl;
+      int object_idx = static_cast<int>(std::distance(objects_frame_.begin(), it));
       pinocchio::SE3 in_box_M_compartment = in_box_M_compartments_[object_idx];
       pinocchio::SE3 in_base_M_compartment = in_base_M_box_ * in_box_M_compartment;
       pinocchio::SE3 in_base_M_gripper = get_in_base_M_gripper(in_base_M_compartment, object);
-      Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(q_, in_base_M_gripper);
+      Eigen::VectorXd q_above_compartment = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_gripper);
       q_waypoints = {q_first_waypoint, q_above_compartment};
     }
     else
     {
-      std::cout << "try to follow traj in unknown state, state idx is " << static_cast<int>(state_) << std::endl;
-      q_waypoints = {q_};
+      RCLCPP_ERROR(logger_, "Started motion planning in an unexpected state, state idx : %d",
+                   static_cast<int>(state_));
+      q_waypoints = {current_q_};
     }
-    motion_planner.set_plan(q_, q_waypoints);
+    motion_planner.set_plan(current_q_, q_waypoints);
     trajectory_ready_ = true;
-    std::cout << "finished setting traj" << std::endl;
+    RCLCPP_INFO(logger_, "Motion planning ready !");
   }
 
   std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t()
@@ -649,10 +620,11 @@ public:
 private:
   int nq_ = 5;
   rclcpp::Time ros_time_;
-  Eigen::VectorXd q_, q_base_moving_;
+  Eigen::VectorXd current_q_, q_base_moving_;
   std::map<std::string, Eigen::Vector3d> in_object_translation_grasp_map_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  rclcpp::Logger logger_ = rclcpp::get_logger("joint_trajectory_publisher");
   enum StateMachine state_ = SEARCHING_OBJECTS;
   std::vector<StateMachine> state_order_ = {SEARCHING_OBJECTS, GOING_TO_GRASP_POSE, GRASPING, SEARCHING_BOX, PLACING};
   std::vector<std::tuple<ActionType, double>> actions_ = {};
@@ -661,7 +633,7 @@ private:
   double box_dist_while_placing_, wait_duration_before_vision_action_, time_ = 0.;
   MotionPlanner motion_planner;
   std::vector<double> joints_des_precision_;
-  std::vector<Eigen::VectorXd> q_waypoints = {}, q_inits_ = {}, searching_box_base_waypoints_ = {};
+  std::vector<Eigen::VectorXd> q_waypoints = {}, qs_searching_objects_ = {}, searching_box_base_waypoints_ = {};
   std::vector<pinocchio::SE3> in_box_M_compartments_ = {};
   pinocchio::SE3 in_world_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), in_base_M_box_ = pinocchio::SE3(Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.25, 0.0, 0.0)), new_transform = pinocchio::SE3::Identity(), first_transform = pinocchio::SE3::Identity(), sec_transform = pinocchio::SE3::Identity();
 
@@ -671,5 +643,6 @@ private:
   std::thread trajectory_computing_thread_;
   std::vector<std::string> objects_frame_, objects_done_ = {};
   std::tuple<std::string, pinocchio::SE3> current_target_;
-  Eigen::VectorXd q_waypoint_above_object_, base_pose_ = Eigen::VectorXd::Zero(3), q_waypoint_up_, q_init_;
+  Eigen::VectorXd base_pose_ = Eigen::VectorXd::Zero(3);
+  std::vector<std::string> box_frames_ = {"box_center", "box_left", "box_right"};
 };

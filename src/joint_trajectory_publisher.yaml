@@ -3,14 +3,6 @@ joint_trajectory_publisher:
     type: string
     default_value: "SO-101"
     description: "Name of the robot."
-  q_init:
-    type: double_array
-    default_value: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
-    description: "Initial configuration to look for objects."
-  q_waypoint_up:
-    type: double_array
-    default_value: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
-    description: "waypoint configuration used when placing objects."
   joint_trajectory_topic:
     type: string
     default_value: "/so_100_arm_controller/joint_trajectory"
@@ -19,6 +11,10 @@ joint_trajectory_publisher:
     type: string
     default_value: "/so_100_arm_gripper_controller/commands"
     description: "Topic on which we publish gripper angle commands."
+  ee_frame_name:
+    type: string
+    default_value: "gripper_frame_link"
+    description: "Frame name of the end-effector."
   objects_frame:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]
@@ -41,6 +37,10 @@ joint_trajectory_publisher:
     type: double
     default_value: 100.0
     description: "Rate of node in hertz."
+  nq:
+    type: int
+    default_value: 5
+    description: "Number of joints in the configuration vector."
   use_genetic_algo:
     type: bool
     default_value: true
@@ -53,6 +53,14 @@ joint_trajectory_publisher:
     type: double
     default_value: 0.25
     description: "Ideal distance to the box while placing an object in it."
+  box_width :
+    type: double
+    default_value: 0.25
+    description: "Width of the box in meters."
+  box_length :
+    type: double
+    default_value: 0.315
+    description: "Length of the box in meters."
   wait_duration_before_vision_action:
     type: double
     default_value: 1.5

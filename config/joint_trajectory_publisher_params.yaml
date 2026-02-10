@@ -2,8 +2,6 @@
 joint_trajectory_publisher:
   ros__parameters:
     robot_name: "SO-101"
-    q_init: [0.322136, 0.018408, -0.678020, 1.65, 1.684311]
-    q_waypoint_up: [0.256175, -0.573709, -0.335942, 1.032369, 1.679709]
     joint_trajectory_topic: "/so_100_arm_controller/joint_trajectory"
     gripper_command_topic: "/so_100_arm_gripper_controller/commands"
     objects_frame: ["glass", "cardboard", "metal", "plastic"]

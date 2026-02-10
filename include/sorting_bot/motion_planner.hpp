@@ -13,7 +13,7 @@ public:
   MotionPlanner()
   {
   }
-  void initialize(std::string urdf, std::string ee_frame_name, joint_trajectory_publisher::Params params)
+  void initialize(std::string urdf, joint_trajectory_publisher::Params params)
   {
     // Build pinocchio reduced model.
     pinocchio::Model model;
@@ -36,7 +36,7 @@ public:
 
     // Initialize remaining attributes.
     model_ptr_ = std::make_shared<pinocchio::Model>(model);
-    ee_frame_name_ = ee_frame_name;
+    ee_frame_name_ = params.ee_frame_name;
     pinocchio::Data data(*model_ptr_);
     nq_ = model_ptr_->nq;
     data_ptr_ = std::make_shared<pinocchio::Data>(data);
@@ -64,8 +64,7 @@ public:
     {
       q_inv_kin = std::get<0>(inv_kin_res);
     }
-    std::string ee_frame_name = "gripper_frame_link";
-    pinocchio::SE3 pose_inv_kin = get_frame_pose_at_q(q_inv_kin, ee_frame_name);
+    pinocchio::SE3 pose_inv_kin = get_frame_pose_at_q(q_inv_kin, ee_frame_name_);
     Eigen::Matrix<double, 6, 1> err = pinocchio::log6(pose_inv_kin.actInv(des_transform)).toVector();
     Eigen::Matrix<double, 5, 1> err_5d;
     err_5d.head<3>() = err.head<3>();

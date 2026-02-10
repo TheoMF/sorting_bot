@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <stdexcept>
 #include <cstdlib>
+#include <atomic>
+#include <mutex>
 
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -19,6 +21,17 @@
 
 namespace joint_trajectory_publisher
 {
+  using NavigateThroughPoses = nav2_msgs::action::NavigateThroughPoses;
+  using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
+  using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+  using Float64MultiArray = std_msgs::msg::Float64MultiArray;
+  using MultiArrayDimension = std_msgs::msg::MultiArrayDimension;
+  using JointState = sensor_msgs::msg::JointState;
+  using Odometry = nav_msgs::msg::Odometry;
+  using String = std_msgs::msg::String;
+  using Pose = geometry_msgs::msg::Pose;
+  using PoseStamped = geometry_msgs::msg::PoseStamped;
+
   class JointTrajectoryPublisher : public rclcpp::Node
   {
   public:
@@ -35,50 +48,70 @@ namespace joint_trajectory_publisher
       rclcpp::QoS joint_trajectory_qos_profile(10);
       joint_trajectory_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
       joint_trajectory_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
-      publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(params_.joint_trajectory_topic, joint_trajectory_qos_profile);
+      joint_trajectory_publisher_ = this->create_publisher<JointTrajectory>(
+          params_.joint_trajectory_topic,
+          joint_trajectory_qos_profile);
 
       // Action client for navigation
-      navigation_action_client_ = rclcpp_action::create_client<nav2_msgs::action::NavigateThroughPoses>(
-          this, "/navigate_through_poses");
+      navigation_action_client_ = rclcpp_action::create_client<NavigateThroughPoses>(
+          this,
+          "/navigate_through_poses");
 
-      // Gripper angle publisher
+      // Gripper position publisher
       if (params_.robot_name == "SO-101")
       {
-        so_101_gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(params_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+        so_101_gripper_publisher_ = this->create_publisher<Float64MultiArray>(
+            params_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
         lekiwi_gripper_publisher_ = nullptr;
       }
       else if (params_.robot_name == "LeKiwi")
       {
         so_101_gripper_publisher_ = nullptr;
-        lekiwi_gripper_publisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(params_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+        lekiwi_gripper_publisher_ = this->create_publisher<JointTrajectory>(
+            params_.gripper_command_topic,
+            rclcpp::SystemDefaultsQoS());
       }
 
       // Joint states subscriber
       rclcpp::QoS joint_states_qos_profile(10);
       joint_states_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
       joint_states_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-      state_subscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
-          "/joint_states", joint_states_qos_profile, std::bind(&JointTrajectoryPublisher::joint_states_callback, this, std::placeholders::_1));
+      state_subscriber_ = this->create_subscription<JointState>(
+          "/joint_states", joint_states_qos_profile,
+          std::bind(&JointTrajectoryPublisher::joint_states_callback, this, std::placeholders::_1));
 
       // Odometry subscriber
       rclcpp::QoS odometry_qos_profile(10);
       odometry_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
       odometry_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
-      odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
-          "/odom", odometry_qos_profile, std::bind(&JointTrajectoryPublisher::odom_callback, this, std::placeholders::_1));
+      odom_subscriber_ = this->create_subscription<Odometry>(
+          "/odom", odometry_qos_profile,
+          std::bind(&JointTrajectoryPublisher::odom_callback, this,
+                    std::placeholders::_1));
 
       // Robot description subscriber
-      robot_description_subscriber_ = this->create_subscription<std_msgs::msg::String>(
-          "/robot_description", joint_states_qos_profile, std::bind(&JointTrajectoryPublisher::robot_description_callback, this, std::placeholders::_1));
+      rclcpp::QoS robot_description_qos_profile(10);
+      robot_description_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+      robot_description_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+      robot_description_subscriber_ = this->create_subscription<String>(
+          "/robot_description", robot_description_qos_profile,
+          std::bind(&JointTrajectoryPublisher::robot_description_callback, this,
+                    std::placeholders::_1));
 
       // Timer to publish joint trajectory
       joint_traj_pub_timer_ = this->create_wall_timer(
-          std::chrono::milliseconds(10), std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
+          std::chrono::milliseconds(10),
+          std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
 
       // TF related attributes.
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+
+      // Initialize non-ROS-related attributes.
+      nq_ = params_.nq;
+      q_dot_traj_ = Eigen::VectorXd::Zero(nq_);
+      integrated_q_err_ = Eigen::VectorXd::Zero(nq_);
     }
 
   private:
@@ -99,25 +132,28 @@ namespace joint_trajectory_publisher
       return true;
     }
 
-    void joint_states_callback(const sensor_msgs::msg::JointState &msg)
+    void joint_states_callback(const JointState &msg)
     {
       std::vector<double> current_q_vec = {};
       for (std::string &joint_name : params_.joint_names)
       {
-        int joint_idx = static_cast<int>(std::find(msg.name.begin(), msg.name.end(), joint_name) - msg.name.begin());
+        auto joint_name_it = std::find(msg.name.begin(), msg.name.end(), joint_name);
+        int joint_idx = static_cast<int>(joint_name_it - msg.name.begin());
         current_q_vec.push_back(msg.position[joint_idx]);
       }
+      std::lock_guard<std::mutex> guard(current_q_mutex_);
       current_q_ = Eigen::Map<Eigen::VectorXd>(current_q_vec.data(), current_q_vec.size());
       joint_states_callback_ready_ = true;
     }
 
-    void robot_description_callback(const std_msgs::msg::String &msg)
+    void robot_description_callback(const String &msg)
     {
-      planner_manager_.initialize(tf_buffer_, tf_broadcaster_, msg.data, end_effector_name_, params_);
+      planner_manager_.initialize(tf_buffer_, tf_broadcaster_, msg.data, params_);
       robot_description_ready_ = true;
     }
 
-    void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateThroughPoses>::SharedPtr &goal_handle)
+    void nav_goal_response_callback(
+        const rclcpp_action::ClientGoalHandle<NavigateThroughPoses>::SharedPtr &goal_handle)
     {
       if (!goal_handle)
       {
@@ -129,7 +165,7 @@ namespace joint_trajectory_publisher
       }
     }
 
-    void nav_result_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateThroughPoses>::WrappedResult &result)
+    void nav_result_callback(const rclcpp_action::ClientGoalHandle<NavigateThroughPoses>::WrappedResult &result)
     {
       switch (result.code)
       {
@@ -148,7 +184,7 @@ namespace joint_trajectory_publisher
       nav_result_ = result.code;
     }
 
-    void odom_callback(const nav_msgs::msg::Odometry &msg)
+    void odom_callback(const Odometry &msg)
     {
       base_pose_ = pose_msg_to_base_pose(msg.pose.pose);
     }
@@ -163,12 +199,12 @@ namespace joint_trajectory_publisher
       }
 
       // Create navigation's waypoints msg.
-      auto goal_msg = nav2_msgs::action::NavigateThroughPoses::Goal();
+      auto goal_msg = NavigateThroughPoses::Goal();
       for (const auto &base_pose : base_poses)
         goal_msg.poses.push_back(base_pose_to_pose_msg(base_pose));
 
       // Add callbacks to track navigation progress.
-      auto send_goal_options = rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses>::SendGoalOptions();
+      auto send_goal_options = rclcpp_action::Client<NavigateThroughPoses>::SendGoalOptions();
       send_goal_options.goal_response_callback =
           std::bind(&JointTrajectoryPublisher::nav_goal_response_callback, this, std::placeholders::_1);
       send_goal_options.result_callback =
@@ -176,7 +212,7 @@ namespace joint_trajectory_publisher
       navigation_action_client_->async_send_goal(goal_msg, send_goal_options);
     }
 
-    Eigen::VectorXd pose_msg_to_base_pose(const geometry_msgs::msg::Pose &msg)
+    Eigen::VectorXd pose_msg_to_base_pose(const Pose &msg)
     {
       pinocchio::SE3::Quaternion quat(msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z);
       double yaw = quat.toRotationMatrix().eulerAngles(0, 1, 2)[2];
@@ -184,9 +220,9 @@ namespace joint_trajectory_publisher
       return Eigen::Map<Eigen::VectorXd>(pose_vec.data(), pose_vec.size());
     }
 
-    geometry_msgs::msg::PoseStamped base_pose_to_pose_msg(const Eigen::VectorXd &base_pose)
+    PoseStamped base_pose_to_pose_msg(const Eigen::VectorXd &base_pose)
     {
-      geometry_msgs::msg::PoseStamped pose_msg;
+      PoseStamped pose_msg;
       pose_msg.header.stamp = this->get_clock()->now();
       pose_msg.header.frame_id = params_.world_frame;
       pose_msg.pose.position.x = base_pose[0];
@@ -201,26 +237,25 @@ namespace joint_trajectory_publisher
       return pose_msg;
     }
 
-    void send_gripper_pose_msg(const double &angle)
+    void send_gripper_pose_msg(const double &gripper_pose)
     {
       if (params_.robot_name == "SO-101")
       {
-        std_msgs::msg::Float64MultiArray gripper_command_msg;
-        std_msgs::msg::MultiArrayDimension dim_sol;
+        Float64MultiArray gripper_command_msg;
+        MultiArrayDimension dim_sol;
         dim_sol.label = "position";
         dim_sol.size = 1;
         dim_sol.stride = 1;
         gripper_command_msg.layout.dim.push_back(dim_sol);
-        std_msgs::msg::MultiArrayDimension max_effort_dim;
-        gripper_command_msg.data = {angle};
+        gripper_command_msg.data = {gripper_pose};
         so_101_gripper_publisher_->publish(gripper_command_msg);
       }
       else if (params_.robot_name == "LeKiwi")
       {
-        trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+        JointTrajectory joint_trajectory_msg;
         joint_trajectory_msg.joint_names = {"gripper"};
-        trajectory_msgs::msg::JointTrajectoryPoint curr_point;
-        curr_point.positions = {angle};
+        JointTrajectoryPoint curr_point;
+        curr_point.positions = {gripper_pose};
         joint_trajectory_msg.points = {curr_point};
         lekiwi_gripper_publisher_->publish(joint_trajectory_msg);
       }
@@ -228,16 +263,16 @@ namespace joint_trajectory_publisher
 
     void send_joint_trajectory_msg(const Eigen::VectorXd &q_ref, const Eigen::VectorXd &q_dot_ref)
     {
-      trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
+      JointTrajectory joint_trajectory_msg;
       joint_trajectory_msg.joint_names = params_.joint_names;
-      trajectory_msgs::msg::JointTrajectoryPoint joint_trajectory_point_msg;
+      JointTrajectoryPoint joint_trajectory_point_msg;
       std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
       std::vector<double> q_dot_ref_vec(q_dot_ref.data(), q_dot_ref.data() + q_dot_ref.size());
       joint_trajectory_point_msg.positions = q_ref_vec;
       joint_trajectory_point_msg.velocities = q_dot_ref_vec;
 
       joint_trajectory_msg.points = {joint_trajectory_point_msg};
-      publisher_->publish(joint_trajectory_msg);
+      joint_trajectory_publisher_->publish(joint_trajectory_msg);
     }
 
     void handle_nav_goal_publication()
@@ -317,6 +352,7 @@ namespace joint_trajectory_publisher
     {
       std::tuple<ActionType, double> action = planner_manager_.get_current_action();
       ActionType action_type = std::get<0>(action);
+      // If we are in a state that requires to follow a trajectory that is ready, integrate error.
       if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVING_BASE_CONFIGURATION) && traj_ready_)
         for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
         {
@@ -327,6 +363,7 @@ namespace joint_trajectory_publisher
         }
       else
       {
+        // Needed to handle motors delays to reach desired configuration.
         integrated_q_err_ += last_q_ - current_q_;
         traj_ready_ = false;
       }
@@ -337,7 +374,6 @@ namespace joint_trajectory_publisher
       Eigen::VectorXd friction_compensation = Eigen::VectorXd::Zero(nq_);
       for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
       {
-        // Add friction compensation.
         if (q_err[joint_idx] > 0)
           friction_compensation[joint_idx] = params_.friction_compensation[joint_idx];
         else if (q_err[joint_idx] < 0)
@@ -353,11 +389,12 @@ namespace joint_trajectory_publisher
         return;
 
       // Initialize attributes while waiting for first trajectory to be set.
-      if (first_joint_traj_pub_)
+      std::lock_guard<std::mutex> guard(current_q_mutex_);
+      if (first_joint_traj_pub_callback_iter_)
       {
         last_q_ = current_q_;
         q_traj_ = current_q_;
-        first_joint_traj_pub_ = false;
+        first_joint_traj_pub_callback_iter_ = false;
       }
 
       // Update planner manager and perform needed actions.
@@ -372,37 +409,39 @@ namespace joint_trajectory_publisher
 
       last_q_ = current_q_;
     }
-
-    int nq_ = 5;
-    Eigen::VectorXd current_q_, q_traj_, q_dot_traj_ = Eigen::VectorXd::Zero(nq_),
-                                         base_pose_ = Eigen::VectorXd::Zero(3), integrated_q_err_ = Eigen::VectorXd::Zero(nq_), last_q_;
-
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
         parameter_listener_;
     joint_trajectory_publisher::Params params_;
 
-    std::vector<Eigen::VectorXd> q_waypoints, last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
+    // ROS publishers, subscribers and timers.
     rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_;
-    rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr publisher_;
-    rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses>::SharedPtr navigation_action_client_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
-    rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
-    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_subscriber_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_description_subscriber_;
+    rclcpp::Publisher<JointTrajectory>::SharedPtr joint_trajectory_publisher_;
+    rclcpp::Publisher<Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
+    rclcpp::Publisher<JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
+    rclcpp::Subscription<JointState>::SharedPtr state_subscriber_;
+    rclcpp::Subscription<Odometry>::SharedPtr odom_subscriber_;
+    rclcpp::Subscription<String>::SharedPtr robot_description_subscriber_;
+
+    // Navigation attributes.
+    rclcpp_action::Client<NavigateThroughPoses>::SharedPtr navigation_action_client_;
     rclcpp_action::ResultCode nav_result_ = rclcpp_action::ResultCode::UNKNOWN;
 
+    // TF attributes.
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+    // Non-ROS-Related attributes.
     PlannerManager planner_manager_;
-    bool over_traj_total_duration_ = false, first_joint_traj_pub_ = true;
     ActionType last_action_ = NONE;
-    std::string end_effector_name_ = "gripper_frame_link";
-    std::thread trajectory_computing_thread_;
-    bool joint_states_callback_ready_ = false, robot_description_ready_ = false, traj_ready_ = false;
+    std::mutex current_q_mutex_;
+    int nq_;
+    Eigen::VectorXd current_q_, q_traj_, q_dot_traj_,
+        integrated_q_err_, last_q_, base_pose_ = Eigen::VectorXd::Zero(3);
+    std::vector<Eigen::VectorXd> last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
+    bool over_traj_total_duration_ = false, first_joint_traj_pub_callback_iter_ = true, traj_ready_ = false;
+    std::atomic<bool> joint_states_callback_ready_ = false, robot_description_ready_ = false;
   };
 }
 
