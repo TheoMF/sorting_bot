@@ -20,11 +20,19 @@ joint_trajectory_publisher:
     default_value: ["glass", "cardboard", "metal", "plastic"]
     description: "Frame name of the objects in tf."
   __map_objects_frame:
-    in_object_translation_gripper:
+    in_grasp_translation_object_to_grasp:
       type: double_array
       description: "Translation from object frame to gripper frame."
       validation:
         not_empty<>: []
+    grasp_from_top:
+      type: bool
+      default_value: false
+      description: "Wether to grasp the object from the top or from the side."
+  box_frames:
+    type: string_array
+    default_value: ["box_center", "box_left", "box_right"]
+    description: "Frame name of the box tags in tf."
   world_frame:
     type: string
     default_value: "odom"
@@ -33,6 +41,14 @@ joint_trajectory_publisher:
     type: string
     default_value: "base_footprint"
     description: "Name of the base link frame."
+  hand_camera_frame:
+    type: string
+    default_value: "hand_camera"
+    description: "Name of the hand camera frame."
+  base_camera_frame:
+    type: string
+    default_value: "base_camera"
+    description: "Name of the base camera frame."
   rate:
     type: double
     default_value: 100.0

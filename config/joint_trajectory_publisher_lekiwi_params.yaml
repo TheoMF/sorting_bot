@@ -7,15 +7,21 @@ joint_trajectory_publisher:
     ee_frame_name : "gripper_frame_link"
     objects_frame: ["plastic","glass","cardboard", "metal"]
     glass:
-      in_object_translation_gripper: [0.038, 0.033, 0.03]
+      in_grasp_translation_object_to_grasp: [0.038, 0.033, 0.03]
+      grasp_from_top: false
     cardboard:
-      in_object_translation_gripper: [0.04, 0.025, 0.02]
+      in_grasp_translation_object_to_grasp: [0.04, 0.025, 0.02]
+      grasp_from_top: false
     metal:
-      in_object_translation_gripper: [0.04, -0.03, 0.021]
+      in_grasp_translation_object_to_grasp: [0.04, -0.03, 0.021]
+      grasp_from_top: true
     plastic:
-      in_object_translation_gripper: [0.045, 0.025, 0.025]
+      in_grasp_translation_object_to_grasp: [0.045, 0.025, 0.025]
+      grasp_from_top: false
     world_frame: "odom"
     base_frame: "base_footprint"
+    hand_camera_frame: "camera"
+    base_camera_frame: "base_camera"
     rate: 100.0
     nq: 5
     use_genetic_algo: false

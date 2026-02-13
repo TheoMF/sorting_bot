@@ -1,11 +1,8 @@
-#include <vector>
 #include <string>
 #include <chrono>
 #include <unistd.h>
 #include <stdexcept>
 #include <cstdlib>
-#include <atomic>
-#include <mutex>
 
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -31,6 +28,7 @@ namespace joint_trajectory_publisher
   using String = std_msgs::msg::String;
   using Pose = geometry_msgs::msg::Pose;
   using PoseStamped = geometry_msgs::msg::PoseStamped;
+  using TransformStamped = geometry_msgs::msg::TransformStamped;
 
   class JointTrajectoryPublisher : public rclcpp::Node
   {
@@ -100,13 +98,24 @@ namespace joint_trajectory_publisher
 
       // Timer to publish joint trajectory
       joint_traj_pub_timer_ = this->create_wall_timer(
-          std::chrono::milliseconds(10),
+          std::chrono::milliseconds((int)(1000.0 / params_.rate)),
           std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
+
+      // Timer to update detections status.
+      detections_update_timer_ = this->create_wall_timer(
+          std::chrono::milliseconds(500),
+          std::bind(&JointTrajectoryPublisher::detections_update_callback, this));
 
       // TF related attributes.
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+
+      // Fill detections status map.
+      for (std::string &object_frame : params_.objects_frame)
+        det_status_map_.insert({object_frame, DetectionStatus(params_.hand_camera_frame, object_frame)});
+      for (std::string &box_frame : params_.box_frames)
+        det_status_map_.insert({box_frame, DetectionStatus(params_.base_camera_frame, box_frame)});
 
       // Initialize non-ROS-related attributes.
       nq_ = params_.nq;
@@ -409,13 +418,54 @@ namespace joint_trajectory_publisher
 
       last_q_ = current_q_;
     }
+
+    void detections_update_callback()
+    {
+      for (auto &[frame, det_status] : det_status_map_)
+      {
+        try
+        {
+          TransformStamped stamped_transform = tf_buffer_->lookupTransform(
+              det_status.camera_frame, det_status.frame, tf2::TimePointZero);
+          if (!det_status.last_stamp.has_value())
+          {
+            det_status.is_in_fov = true;
+            det_status.last_stamp = stamped_transform.header.stamp;
+            TransformStamped in_base_M_frame_stamped = tf_buffer_->lookupTransform(
+                params_.base_frame, det_status.frame, tf2::TimePointZero);
+            det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped.transform);
+          }
+          else
+          {
+            if (stamped_transform.header.stamp != det_status.last_stamp.value())
+            {
+              det_status.is_in_fov = true;
+              det_status.last_stamp = stamped_transform.header.stamp;
+              TransformStamped in_base_M_frame_stamped = tf_buffer_->lookupTransform(
+                  params_.base_frame, det_status.frame, tf2::TimePointZero);
+              det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped.transform);
+            }
+            else
+            {
+              det_status.is_in_fov = false;
+            }
+          }
+        }
+        catch (const tf2::TransformException &ex)
+        {
+          RCLCPP_DEBUG(this->get_logger(), "Didn't found tranform for frame %s , error : %s", frame.c_str(), ex.what());
+        }
+      }
+      planner_manager_.update_det_status_map(det_status_map_);
+    }
+
     // ROS params.
     std::shared_ptr<joint_trajectory_publisher::ParamListener>
         parameter_listener_;
     joint_trajectory_publisher::Params params_;
 
     // ROS publishers, subscribers and timers.
-    rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_;
+    rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_, detections_update_timer_;
     rclcpp::Publisher<JointTrajectory>::SharedPtr joint_trajectory_publisher_;
     rclcpp::Publisher<Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
     rclcpp::Publisher<JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
@@ -427,12 +477,13 @@ namespace joint_trajectory_publisher
     rclcpp_action::Client<NavigateThroughPoses>::SharedPtr navigation_action_client_;
     rclcpp_action::ResultCode nav_result_ = rclcpp_action::ResultCode::UNKNOWN;
 
-    // TF attributes.
+    // tf attributes.
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     // Non-ROS-Related attributes.
+    std::map<std::string, DetectionStatus> det_status_map_;
     PlannerManager planner_manager_;
     ActionType last_action_ = NONE;
     std::mutex current_q_mutex_;
