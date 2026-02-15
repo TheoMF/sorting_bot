@@ -316,15 +316,25 @@ namespace joint_trajectory_publisher
 
     void do_actions()
     {
-      std::tuple<ActionType, double> action = planner_manager_.get_current_action();
+      Action action = planner_manager_.get_current_action();
       StateMachine state = planner_manager_.get_state();
-      ActionType action_type = std::get<0>(action);
-      RCLCPP_DEBUG(this->get_logger(), "state idx : %d action idx : %d", static_cast<int>(state), static_cast<int>(action_type));
-      switch (action_type)
+      RCLCPP_DEBUG(this->get_logger(), "state idx : %d action idx : %d", static_cast<int>(state), static_cast<int>(action.type));
+      switch (action.type)
       {
       case MOVE_JAW:
       {
-        send_gripper_pose_msg(std::get<1>(action));
+        // MoveJawAction *move_jaw_action = dynamic_cast<MoveJawAction *>(&action);
+        // double gripper_angle = move_jaw_action->value();
+        if (const double *value = std::get_if<double>(&action.value))
+        {
+          send_gripper_pose_msg(*value);
+        }
+        else
+        {
+          RCLCPP_ERROR(this->get_logger(), "Stored wrong variant value type %s for Move Jaw action.", action.get_value_type_name());
+          throw std::runtime_error("Got wrong type for move jaw action value");
+        }
+
         break;
       }
       case MOVE_BASE:
@@ -332,12 +342,7 @@ namespace joint_trajectory_publisher
         handle_nav_goal_publication();
         break;
       }
-      case SET_MOVING_BASE_CONFIGURATION:
-      {
-        update_traj_references();
-        break;
-      }
-      case FOLLOW_TRAJ:
+      case MOVE_ARM:
       {
         update_traj_references();
         break;
@@ -345,10 +350,10 @@ namespace joint_trajectory_publisher
       }
 
       // Add log if we started an action.
-      if (action_type != last_action_)
+      if (action.type != last_action_)
       {
-        last_action_ = action_type;
-        RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action_type));
+        last_action_ = action.type;
+        RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action.type));
       }
 
       // Update actions status.
@@ -359,10 +364,9 @@ namespace joint_trajectory_publisher
 
     void update_integrated_q_err(const Eigen::VectorXd &q_err)
     {
-      std::tuple<ActionType, double> action = planner_manager_.get_current_action();
-      ActionType action_type = std::get<0>(action);
+      Action action = planner_manager_.get_current_action();
       // If we are in a state that requires to follow a trajectory that is ready, integrate error.
-      if ((action_type == FOLLOW_TRAJ || action_type == SET_MOVING_BASE_CONFIGURATION) && traj_ready_)
+      if (action.type == MOVE_ARM && traj_ready_)
         for (int joint_idx = 0; joint_idx < nq_; joint_idx++)
         {
           if (over_traj_total_duration_)
