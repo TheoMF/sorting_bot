@@ -1,26 +1,22 @@
-#include <vector>
-#include <string>
 #include <chrono>
+#include <string>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
 using namespace std::chrono_literals;
 
-class DetectionSimulator : public rclcpp::Node
-{
+class DetectionSimulator : public rclcpp::Node {
 public:
-  DetectionSimulator()
-      : Node("vision_sim")
-  {
+  DetectionSimulator() : Node("vision_sim") {
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-    timer_ = this->create_wall_timer(
-        50ms, std::bind(&DetectionSimulator::detection_pub_callback, this));
+    timer_ = this->create_wall_timer(50ms, std::bind(&DetectionSimulator::detection_pub_callback, this));
   }
 
 private:
-  void publish_transform(std::vector<double> translation, std::vector<double> rotation_quat, const std::string parent_frame, std::string child_frame)
-  {
+  void publish_transform(std::vector<double> translation, std::vector<double> rotation_quat,
+                         const std::string parent_frame, std::string child_frame) {
     geometry_msgs::msg::TransformStamped transform_msg;
     transform_msg.header.stamp = this->get_clock()->now();
     transform_msg.header.frame_id = parent_frame;
@@ -38,23 +34,20 @@ private:
     // Send the transformation
     tf_broadcaster_->sendTransform(transform_msg);
   }
-  void
-  detection_pub_callback()
-  {
+  void detection_pub_callback() {
     std::vector<double> translation{0.25, 0.1, 0.02};
     std::vector<double> rotation_quat{0., 1., 0., 0.};
     publish_transform(translation, rotation_quat, "base_footprint", "cardboard");
 
-    std::vector<double> box_translation{-0.1, 0.0, 0.0};
+    std::vector<double> box_translation{-0.27, 0.0, 0.0};
     std::vector<double> box_rotation_quat{0.5, 0.5, 0.5, 0.5};
-    publish_transform(box_translation, box_rotation_quat, "odom", "box");
+    publish_transform(box_translation, box_rotation_quat, "odom", "box_center");
   }
   rclcpp::TimerBase::SharedPtr timer_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<DetectionSimulator>());
   rclcpp::shutdown();

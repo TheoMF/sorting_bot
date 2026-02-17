@@ -1,20 +1,16 @@
-#include <iostream>
 #include <fstream>
+#include <iostream>
 
 #include "pinocchio/parsers/urdf.hpp"
 
-#include "sorting_bot/quintic_polynom.hpp"
 #include "sorting_bot/genetic_algo_inverse_kin.hpp"
 #include "sorting_bot/inverse_kin.hpp"
+#include "sorting_bot/quintic_polynom.hpp"
 
-class MotionPlanner
-{
+class MotionPlanner {
 public:
-  MotionPlanner()
-  {
-  }
-  void initialize(std::string urdf, joint_trajectory_publisher::Params params)
-  {
+  MotionPlanner() {}
+  void initialize(std::string urdf, joint_trajectory_publisher::Params params) {
     // Build pinocchio reduced model.
     pinocchio::Model model;
     pinocchio::urdf::buildModelFromXML(urdf, model);
@@ -24,8 +20,7 @@ public:
     else if (params.robot_name == "SO-101")
       joints_to_lock_names = {"gripper"};
     std::vector<pinocchio::JointIndex> list_of_joints_to_lock_by_id = {};
-    for (std::string &joint_to_lock_name : joints_to_lock_names)
-    {
+    for (std::string &joint_to_lock_name : joints_to_lock_names) {
       list_of_joints_to_lock_by_id.push_back(model.getJointId(joint_to_lock_name));
       std::cout << "joint to lock id " << model.getJointId(joint_to_lock_name) << std::endl;
     }
@@ -49,19 +44,16 @@ public:
     quintic_polynom_.set_motion_planning_time_coeff(params.motion_planning_time_coeff);
   }
 
-  Eigen::VectorXd get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init, const pinocchio::SE3 &des_transform)
-  {
+  Eigen::VectorXd get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init, const pinocchio::SE3 &des_transform) {
     Eigen::VectorXd q_inv_kin;
-    std::tuple<Eigen::VectorXd, double> inv_kin_res = inverse_kin_.get_inverse_kinematics_for_des_pose(q_init, des_transform);
+    std::tuple<Eigen::VectorXd, double> inv_kin_res =
+        inverse_kin_.get_inverse_kinematics_for_des_pose(q_init, des_transform);
     double pose_err = std::get<1>(inv_kin_res);
-    if (pose_err > 0.01 && use_genetic_algo_)
-    {
+    if (pose_err > 0.01 && use_genetic_algo_) {
       std::cout << "IK didn't converge, Run genetic algorithm" << std::endl;
       Individual best = genetic_algo_inverse_kin_.run_gen_algo(des_transform);
       q_inv_kin = best.q();
-    }
-    else
-    {
+    } else {
       q_inv_kin = std::get<0>(inv_kin_res);
     }
     pinocchio::SE3 pose_inv_kin = get_frame_pose_at_q(q_inv_kin, ee_frame_name_);
@@ -71,16 +63,14 @@ public:
     err_5d.tail<2>() = err.tail<2>();
     std::cout << "base IK err " << pose_err << std::endl;
 
-    if (pose_err > 0.05)
-    {
+    if (pose_err > 0.05) {
       std::cout << "didnt converge, returning q_init" << std::endl;
       return q_init;
     }
     return q_inv_kin;
   }
 
-  void print_ee_pose(const Eigen::VectorXd &q)
-  {
+  void print_ee_pose(const Eigen::VectorXd &q) {
     pinocchio::framesForwardKinematics(*model_ptr_, *data_ptr_, q);
     const pinocchio::SE3 iMd = data_ptr_->oMf[ee_frame_id_];
     std::cout << "in_base_M_ee " << iMd << std::endl;
@@ -88,27 +78,21 @@ public:
     std::cout << "in_base_M_ee quat " << quat << std::endl;
   }
 
-  pinocchio::SE3 get_frame_pose_at_q(Eigen::VectorXd &q, std::string &frame_name)
-  {
+  pinocchio::SE3 get_frame_pose_at_q(Eigen::VectorXd &q, std::string &frame_name) {
     pinocchio::framesForwardKinematics(*model_ptr_, *data_ptr_, q);
     auto frame_id = model_ptr_->getFrameId(frame_name);
     return data_ptr_->oMf[frame_id];
   }
 
-  void set_plan(const Eigen::VectorXd &q_start, const std::vector<Eigen::VectorXd> &q_waypoints)
-  {
+  void set_plan(const Eigen::VectorXd &q_start, const std::vector<Eigen::VectorXd> &q_waypoints) {
     quintic_polynom_.set_plan(q_start, q_waypoints);
   }
 
-  std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t(const double &time)
-  {
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> get_traj_value_at_t(const double &time) {
     return quintic_polynom_.get_traj_value_at_t(time);
   }
 
-  double get_traj_duration()
-  {
-    return quintic_polynom_.traj_duration();
-  }
+  double get_traj_duration() { return quintic_polynom_.traj_duration(); }
 
 private:
   std::shared_ptr<pinocchio::Model> model_ptr_;
