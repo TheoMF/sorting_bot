@@ -179,11 +179,15 @@ joint_trajectory_publisher:
       type: double
       default_value: 0.8
       description: "Shift on q0 to create new configurations for searching objects."
-  inverse_kin:
-    eps:
+  min_precision_threshold:
       type: double
-      default_value: 0.001
-      description: "Desired precision."
+      default_value: 0.1
+      description: "norm precision threshold to decide if IK result is acceptable."
+  inverse_kin:
+    convergence_threshold:
+      type: double
+      default_value: 0.01
+      description: "Desired norm precision to consider that IK converged."
     max_iter:
       type: int
       default_value: 10000
@@ -214,10 +218,10 @@ joint_trajectory_publisher:
       type: int
       default_value: 400
       description: "Number of individuals we keep for next iteration."
-    eps:
+    convergence_threshold:
       type: double
-      default_value: 0.001
-      description: "Desired precision."
+      default_value: 0.01
+      description: "Desired norm precision to consider that IK converged."
     mutation_max_amplitude:
       type: double
       default_value: 0.1

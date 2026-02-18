@@ -98,9 +98,9 @@ public:
 
     // Fill detections status map.
     for (std::string &object_frame : params_.objects_frame)
-      det_status_map_.insert({object_frame, DetectionStatus(params_.hand_camera_frame, object_frame)});
+      detection_map_.insert({object_frame, Detection(params_.hand_camera_frame, object_frame)});
     for (std::string &box_frame : params_.box_frames)
-      det_status_map_.insert({box_frame, DetectionStatus(params_.base_camera_frame, box_frame)});
+      detection_map_.insert({box_frame, Detection(params_.base_camera_frame, box_frame)});
 
     // Initialize non-ROS-related attributes.
     nq_ = params_.nq;
@@ -124,7 +124,7 @@ private:
     std::vector<double> current_q_vec = {};
     for (std::string &joint_name : params_.joint_names) {
       auto joint_name_it = std::find(msg.name.begin(), msg.name.end(), joint_name);
-      int joint_idx = static_cast<int>(joint_name_it - msg.name.begin());
+      int joint_idx = static_cast<int>(std::distance(msg.name.begin(), joint_name_it));
       current_q_vec.push_back(msg.position[joint_idx]);
     }
     std::lock_guard<std::mutex> guard(current_q_mutex_);
@@ -137,7 +137,8 @@ private:
     robot_description_ready_ = true;
   }
 
-  void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<NavigateThroughPoses>::SharedPtr &goal_handle) {
+  void nav_goal_response_callback(
+      const rclcpp_action::ClientGoalHandle<NavigateThroughPoses>::SharedPtr &goal_handle) const {
     if (!goal_handle) {
       RCLCPP_ERROR(this->get_logger(), "Goal rejected by navigation server");
     } else {
@@ -167,7 +168,7 @@ private:
   void publish_nav_goal(const std::vector<Eigen::VectorXd> &base_poses) {
     if (!navigation_action_client_->wait_for_action_server(std::chrono::seconds(1))) {
       RCLCPP_WARN(this->get_logger(), "navigation server not available");
-      planner_manager_.set_goal_base_pose_published(false);
+      planner_manager_.set_base_waypoints_published(false);
       return;
     }
 
@@ -208,7 +209,7 @@ private:
     return pose_msg;
   }
 
-  void send_gripper_pose_msg(const double &gripper_pose) {
+  void send_gripper_pose_msg(const double &gripper_pose) const {
     if (params_.robot_name == "SO-101") {
       Float64MultiArray gripper_command_msg;
       MultiArrayDimension dim_sol;
@@ -228,7 +229,7 @@ private:
     }
   }
 
-  void send_joint_trajectory_msg(const Eigen::VectorXd &q_ref, const Eigen::VectorXd &q_dot_ref) {
+  void send_joint_trajectory_msg(const Eigen::VectorXd &q_ref, const Eigen::VectorXd &q_dot_ref) const {
     JointTrajectory joint_trajectory_msg;
     joint_trajectory_msg.joint_names = params_.joint_names;
     JointTrajectoryPoint joint_trajectory_point_msg;
@@ -242,9 +243,9 @@ private:
   }
 
   void handle_nav_goal_publication() {
-    if (!planner_manager_.goal_base_pose_published()) {
-      std::vector<Eigen::VectorXd> base_poses = planner_manager_.get_base_goal_waypoints();
-      planner_manager_.set_goal_base_pose_published(true);
+    if (!planner_manager_.base_waypoints_published()) {
+      std::vector<Eigen::VectorXd> base_poses = planner_manager_.get_base_waypoints();
+      planner_manager_.set_base_waypoints_published(true);
       if (last_sent_base_waypoints[0] == base_poses[0] && planner_manager_.last_nav_succeed)
         nav_result_ = rclcpp_action::ResultCode::SUCCEEDED;
       else {
@@ -270,12 +271,10 @@ private:
   void do_actions() {
     Action action = planner_manager_.get_current_action();
     StateMachine state = planner_manager_.get_state();
-    RCLCPP_DEBUG(this->get_logger(), "state idx : %d action idx : %d", static_cast<int>(state),
-                 static_cast<int>(action.type));
+    RCLCPP_DEBUG(this->get_logger(), "state : %s action : %s", get_state_as_string(state).c_str(),
+                 get_action_type_as_string(action.type).c_str());
     switch (action.type) {
-    case MOVE_JAW: {
-      // MoveJawAction *move_jaw_action = dynamic_cast<MoveJawAction *>(&action);
-      // double gripper_angle = move_jaw_action->value();
+    case MOVE_GRIPPER: {
       if (const double *value = std::get_if<double>(&action.value)) {
         send_gripper_pose_msg(*value);
       } else {
@@ -299,7 +298,7 @@ private:
     // Add log if we started an action.
     if (action.type != last_action_) {
       last_action_ = action.type;
-      RCLCPP_INFO(this->get_logger(), "start new action index %d", static_cast<int>(action.type));
+      RCLCPP_INFO(this->get_logger(), "start new action : %s", get_action_type_as_string(action.type).c_str());
     }
 
     // Update actions status.
@@ -327,7 +326,7 @@ private:
     }
   }
 
-  Eigen::VectorXd get_q_ref(const Eigen::VectorXd &q_err) {
+  Eigen::VectorXd get_q_ref(const Eigen::VectorXd &q_err) const {
     Eigen::VectorXd friction_compensation = Eigen::VectorXd::Zero(nq_);
     for (int joint_idx = 0; joint_idx < nq_; joint_idx++) {
       if (q_err[joint_idx] > 0)
@@ -365,7 +364,7 @@ private:
   }
 
   void detections_update_callback() {
-    for (auto &[frame, det_status] : det_status_map_) {
+    for (auto &[frame, det_status] : detection_map_) {
       try {
         TransformStamped stamped_transform =
             tf_buffer_->lookupTransform(det_status.camera_frame, det_status.frame, tf2::TimePointZero);
@@ -390,7 +389,7 @@ private:
         RCLCPP_DEBUG(this->get_logger(), "Didn't found tranform for frame %s , error : %s", frame.c_str(), ex.what());
       }
     }
-    planner_manager_.update_det_status_map(det_status_map_);
+    planner_manager_.update_detection_map(detection_map_);
   }
 
   // ROS params.
@@ -415,8 +414,8 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  // Non-ROS-Related attributes.
-  std::map<std::string, DetectionStatus> det_status_map_;
+  // Non-ROS related attributes.
+  std::map<std::string, Detection> detection_map_;
   PlannerManager planner_manager_;
   ActionType last_action_ = NONE;
   std::mutex current_q_mutex_;
