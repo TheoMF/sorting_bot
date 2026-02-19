@@ -1,5 +1,7 @@
 #include "sorting_bot/quintic_polynom.hpp"
 
+namespace sorting_bot {
+
 void QuinticPolynom::set_motion_planning_time_coeff(const double &motion_planning_time_coeff) {
   motion_planning_time_coeff_ = motion_planning_time_coeff;
 }
@@ -88,3 +90,5 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> QuinticPolynom::get_traj_valu
 double QuinticPolynom::traj_duration() const { return traj_duration_; }
 
 bool QuinticPolynom::is_initialized() { return is_initialized_; }
+
+} // namespace sorting_bot

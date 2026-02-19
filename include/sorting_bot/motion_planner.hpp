@@ -1,3 +1,6 @@
+#ifndef SORTING_BOT_MOTION_PLANNER_
+#define SORTING_BOT_MOTION_PLANNER_
+
 #include <fstream>
 #include <iostream>
 
@@ -7,6 +10,8 @@
 #include "sorting_bot/inverse_kin/genetic_algo_inverse_kin.hpp"
 #include "sorting_bot/inverse_kin/inverse_kin.hpp"
 #include "sorting_bot/quintic_polynom.hpp"
+
+namespace sorting_bot {
 
 class MotionPlanner {
 public:
@@ -36,3 +41,7 @@ private:
   GeneticAlgoInverseKin genetic_algo_inverse_kin_;
   InverseKin inverse_kin_;
 };
+
+} // namespace sorting_bot
+
+#endif

@@ -1,5 +1,7 @@
 #include "sorting_bot/inverse_kin/genetic_algo_inverse_kin.hpp"
 
+namespace sorting_bot {
+
 typedef Eigen::Matrix<double, 5, 1> Vector5d;
 Individual::Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model,
                        std::shared_ptr<pinocchio::Data> data, const int &ee_frame_id,
@@ -144,3 +146,5 @@ Individual GeneticAlgoInverseKin::run_gen_algo(const pinocchio::SE3 &in_world_M_
 
   return population[0];
 }
+
+} // namespace sorting_bot

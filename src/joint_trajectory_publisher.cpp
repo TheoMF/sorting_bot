@@ -1,6 +1,6 @@
 #include "sorting_bot/joint_trajectory_publisher.hpp"
 
-namespace joint_trajectory_publisher {
+namespace sorting_bot {
 
 JointTrajectoryPublisher::JointTrajectoryPublisher() : Node("joint_trajectory_publisher") {
   if (!load_parameters()) {
@@ -79,7 +79,7 @@ JointTrajectoryPublisher::JointTrajectoryPublisher() : Node("joint_trajectory_pu
 
 bool JointTrajectoryPublisher::load_parameters() {
   try {
-    parameter_listener_ = std::make_shared<ParamListener>(get_node_parameters_interface());
+    parameter_listener_ = std::make_shared<joint_trajectory_publisher::ParamListener>(get_node_parameters_interface());
   } catch (const std::exception &e) {
     RCLCPP_ERROR(this->get_logger(), "Exception thrown during the loading of the parameters: %s \n", e.what());
     return false;
@@ -371,11 +371,11 @@ Eigen::VectorXd current_q_, q_traj_, q_dot_traj_, integrated_q_err_, last_q_, ba
 std::vector<Eigen::VectorXd> last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
 bool over_traj_total_duration_ = false, first_joint_traj_pub_callback_iter_ = true, traj_ready_ = false;
 std::atomic<bool> joint_states_callback_ready_ = false, robot_description_ready_ = false;
-} // namespace joint_trajectory_publisher
+} // namespace sorting_bot
 
 int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<joint_trajectory_publisher::JointTrajectoryPublisher>();
+  auto node = std::make_shared<sorting_bot::JointTrajectoryPublisher>();
   try {
     rclcpp::spin(node);
   } catch (const std::exception &e) {

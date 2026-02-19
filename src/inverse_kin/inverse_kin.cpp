@@ -1,5 +1,7 @@
 #include "sorting_bot/inverse_kin/inverse_kin.hpp"
 
+namespace sorting_bot {
+
 InverseKin::InverseKin() {
   // Inverse kinematic parameters default values.
   error_weights_ = Eigen::Matrix<double, 6, 6>::Identity();
@@ -53,3 +55,5 @@ InverseKin::get_inverse_kinematics(Eigen::VectorXd q_init, const pinocchio::SE3 
 
   return std::make_tuple(q, err.norm());
 }
+
+} // namespace sorting_bot

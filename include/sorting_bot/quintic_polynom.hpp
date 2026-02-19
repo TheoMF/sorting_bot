@@ -1,6 +1,11 @@
+#ifndef SORTING_BOT_QUINTIC_POLYNOM_HPP_
+#define SORTING_BOT_QUINTIC_POLYNOM_HPP_
+
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
+
+namespace sorting_bot {
 
 class QuinticPolynom {
 public:
@@ -31,3 +36,7 @@ private:
   Eigen::VectorXd q_start_;
   double traj_duration_, motion_planning_time_coeff_;
 };
+
+} // namespace sorting_bot
+
+#endif

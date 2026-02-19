@@ -1,8 +1,12 @@
+#ifndef SORTING_BOT_GENETIC_ALGO_INVERSE_KIN_
+#define SORTING_BOT_GENETIC_ALGO_INVERSE_KIN_
+
 #include <random>
 
 #include "sorting_bot/inverse_kin/inverse_kin_base.hpp"
-
 #include "sorting_bot/joint_trajectory_publisher_parameters.hpp"
+
+namespace sorting_bot {
 
 class Individual : public InverseKinBase {
 public:
@@ -40,3 +44,7 @@ private:
   int population_size_, max_iter_, nb_keep_ind_;
   double eps_, mutation_max_amplitude_;
 };
+
+} // namespace sorting_bot
+
+#endif

@@ -1,5 +1,7 @@
 #include "sorting_bot/planner_manager.hpp"
 
+namespace sorting_bot {
+
 void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer,
                                 const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster,
                                 const std::string &urdf, joint_trajectory_publisher::Params &params) {
@@ -495,3 +497,5 @@ bool PlannerManager::goal_pose_achieved() const {
 bool PlannerManager::trajectory_ready() const { return trajectory_ready_; }
 
 StateMachine PlannerManager::get_state() const { return state_; }
+
+} // namespace sorting_bot

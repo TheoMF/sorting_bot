@@ -1,10 +1,12 @@
+#ifndef SORTING_BOT_JOINT_TRAJECTORY_PUBLISHER_HPP_
+#define SORTING_BOT_JOINT_TRAJECTORY_PUBLISHER_HPP_
+
 #include <chrono>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
 
-#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav2_msgs/action/navigate_through_poses.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -16,7 +18,8 @@
 
 #include "sorting_bot/planner_manager.hpp"
 
-namespace joint_trajectory_publisher {
+namespace sorting_bot {
+
 using NavigateThroughPoses = nav2_msgs::action::NavigateThroughPoses;
 using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
@@ -25,9 +28,6 @@ using MultiArrayDimension = std_msgs::msg::MultiArrayDimension;
 using JointState = sensor_msgs::msg::JointState;
 using Odometry = nav_msgs::msg::Odometry;
 using String = std_msgs::msg::String;
-using Pose = geometry_msgs::msg::Pose;
-using PoseStamped = geometry_msgs::msg::PoseStamped;
-using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 class JointTrajectoryPublisher : public rclcpp::Node {
 public:
@@ -100,4 +100,7 @@ private:
   bool over_traj_total_duration_ = false, first_joint_traj_pub_callback_iter_ = true, traj_ready_ = false;
   std::atomic<bool> joint_states_callback_ready_ = false, robot_description_ready_ = false;
 };
-} // namespace joint_trajectory_publisher
+
+} // namespace sorting_bot
+
+#endif

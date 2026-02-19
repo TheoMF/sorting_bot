@@ -1,3 +1,6 @@
+#ifndef SORTING_BOT_PLANNER_MANAGER_HPP_
+#define SORTING_BOT_PLANNER_MANAGER_HPP_
+
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -9,6 +12,8 @@
 #include "sorting_bot/data_structures.hpp"
 #include "sorting_bot/motion_planner.hpp"
 #include "sorting_bot/ros_msg_conversions.hpp"
+
+namespace sorting_bot {
 
 enum StateMachine {
   SEARCHING_OBJECTS,
@@ -157,3 +162,7 @@ private:
                                                                                   state_update_period_;
   std::string robot_name_;
 };
+
+} // namespace sorting_bot
+
+#endif

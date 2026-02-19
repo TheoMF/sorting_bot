@@ -1,6 +1,8 @@
 
 #include "sorting_bot/motion_planner.hpp"
 
+namespace sorting_bot {
+
 void MotionPlanner::initialize(std::string urdf, joint_trajectory_publisher::Params params) {
   // Build pinocchio reduced model.
   pinocchio::Model model;
@@ -73,3 +75,5 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> MotionPlanner::get_traj_value
 }
 
 double MotionPlanner::get_traj_duration() const { return quintic_polynom_.traj_duration(); }
+
+} // namespace sorting_bot

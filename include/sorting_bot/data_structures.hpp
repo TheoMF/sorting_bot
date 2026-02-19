@@ -1,9 +1,14 @@
+#ifndef SORTING_BOT_DATA_STRUCTURES_HPP_
+#define SORTING_BOT_DATA_STRUCTURES_HPP_
+
 #include <optional>
 #include <typeindex>
 #include <variant>
 
 #include "builtin_interfaces/msg/time.hpp"
 #include "pinocchio/spatial/explog.hpp"
+
+namespace sorting_bot {
 
 struct Detection {
   std::string camera_frame, frame;
@@ -65,3 +70,7 @@ inline std::string get_action_type_as_string(const ActionType &action_type) {
   }
   return action_name;
 }
+
+} // namespace sorting_bot
+
+#endif

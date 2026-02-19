@@ -1,8 +1,11 @@
+#ifndef SORTING_BOT_INVERSE_KIN_BASE_
+#define SORTING_BOT_INVERSE_KIN_BASE_
+
 #include "pinocchio/algorithm/frames.hpp"
 #include "pinocchio/algorithm/model.hpp"
 
-#ifndef __sorting_bot_inverse_kin_base__
-#define __sorting_bot_inverse_kin_base__
+namespace sorting_bot {
+
 class InverseKinBase {
 public:
   void initialize_model(std::shared_ptr<pinocchio::Model> model, std::shared_ptr<pinocchio::Data> data,
@@ -19,4 +22,7 @@ protected:
 
   double limit_margin = 0.01;
 };
+
+} // namespace sorting_bot
+
 #endif

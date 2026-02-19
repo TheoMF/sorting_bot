@@ -1,10 +1,12 @@
-#ifndef SORTING_BOT_ROS_MSG_CONVERSIONS_
-#define SORTING_BOT_ROS_MSG_CONVERSIONS_
+#ifndef SORTING_BOT_ROS_MSG_CONVERSIONS_HPP_
+#define SORTING_BOT_ROS_MSG_CONVERSIONS_HPP_
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/transform.hpp"
 #include "pinocchio/spatial/explog.hpp"
 #include "rclcpp/time.hpp"
+
+namespace sorting_bot {
 
 using Pose = geometry_msgs::msg::Pose;
 using PoseStamped = geometry_msgs::msg::PoseStamped;
@@ -61,4 +63,5 @@ inline PoseStamped base_pose_to_pose_msg(const Eigen::VectorXd &base_pose, const
   pose_msg.pose.orientation.w = quat_rot.w();
   return pose_msg;
 }
+} // namespace sorting_bot
 #endif

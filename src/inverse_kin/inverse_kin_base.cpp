@@ -1,5 +1,7 @@
 #include "sorting_bot/inverse_kin/inverse_kin_base.hpp"
 
+namespace sorting_bot {
+
 void InverseKinBase::initialize_model(std::shared_ptr<pinocchio::Model> model, std::shared_ptr<pinocchio::Data> data,
                                       int ee_frame_id) {
   model_ = model;
@@ -16,3 +18,5 @@ void InverseKinBase::set_q_in_joint_limits(Eigen::VectorXd &q) const {
       q[joint_idx] = model_->upperPositionLimit[joint_idx];
   }
 }
+
+} // namespace sorting_bot
