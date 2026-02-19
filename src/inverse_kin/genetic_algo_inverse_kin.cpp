@@ -1,4 +1,4 @@
-#include "sorting_bot/genetic_algo_inverse_kin.hpp"
+#include "sorting_bot/inverse_kin/genetic_algo_inverse_kin.hpp"
 
 typedef Eigen::Matrix<double, 5, 1> Vector5d;
 Individual::Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model,

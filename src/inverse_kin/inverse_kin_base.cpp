@@ -1,4 +1,4 @@
-#include "sorting_bot/inverse_kin_base.hpp"
+#include "sorting_bot/inverse_kin/inverse_kin_base.hpp"
 
 void InverseKinBase::initialize_model(std::shared_ptr<pinocchio::Model> model, std::shared_ptr<pinocchio::Data> data,
                                       int ee_frame_id) {

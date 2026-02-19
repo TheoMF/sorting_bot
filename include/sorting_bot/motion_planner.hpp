@@ -4,8 +4,8 @@
 #include "pinocchio/parsers/urdf.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "sorting_bot/genetic_algo_inverse_kin.hpp"
-#include "sorting_bot/inverse_kin.hpp"
+#include "sorting_bot/inverse_kin/genetic_algo_inverse_kin.hpp"
+#include "sorting_bot/inverse_kin/inverse_kin.hpp"
 #include "sorting_bot/quintic_polynom.hpp"
 
 class MotionPlanner {
@@ -13,8 +13,8 @@ public:
   MotionPlanner() {}
   void initialize(std::string urdf, joint_trajectory_publisher::Params params);
 
-  Eigen::VectorXd get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
-                                                const pinocchio::SE3 &des_in_base_M_gripper) const;
+  std::optional<Eigen::VectorXd> get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
+                                                               const pinocchio::SE3 &des_in_base_M_gripper) const;
 
   pinocchio::SE3 get_in_base_M_gripper_at_q(const Eigen::VectorXd &q, const std::string &frame_name) const;
 

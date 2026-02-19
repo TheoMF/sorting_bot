@@ -32,28 +32,28 @@ void MotionPlanner::initialize(std::string urdf, joint_trajectory_publisher::Par
   min_precision_threshold_ = params.min_precision_threshold;
 }
 
-Eigen::VectorXd MotionPlanner::get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
-                                                             const pinocchio::SE3 &des_in_base_M_gripper) const {
+std::optional<Eigen::VectorXd>
+MotionPlanner::get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
+                                             const pinocchio::SE3 &des_in_base_M_gripper) const {
   // Run Inverse kinematics.
   Eigen::VectorXd q_inv_kin;
   std::tuple<Eigen::VectorXd, double> inv_kin_res = inverse_kin_.get_inverse_kinematics(q_init, des_in_base_M_gripper);
-  double pose_err = std::get<1>(inv_kin_res);
+  double pose_norm_err = std::get<1>(inv_kin_res);
 
-  // If it failed, we can use a genetic algorithm.
-  if (pose_err > min_precision_threshold_ && use_genetic_algo_) {
-    RCLCPP_INFO(logger_, "IK isn't precise enough, Run genetic algorithm");
+  // If it failed, we can as an option use a genetic algorithm to improve result.
+  if (pose_norm_err > min_precision_threshold_ && use_genetic_algo_) {
+    RCLCPP_INFO(logger_, "IK wasn't precise enough, run genetic algorithm.");
     Individual best_individual = genetic_algo_inverse_kin_.run_gen_algo(des_in_base_M_gripper);
     q_inv_kin = best_individual.q();
   } else
     q_inv_kin = std::get<0>(inv_kin_res);
 
   // Return Inverse kinematics result if it's precise enough.
-  RCLCPP_INFO(logger_, "IK norm error : %f", pose_err);
-  if (pose_err > min_precision_threshold_) {
-    RCLCPP_INFO(logger_, "IK didn't converge.");
-    return q_init;
-  }
-  return q_inv_kin;
+  if (pose_norm_err <= min_precision_threshold_)
+    return q_inv_kin;
+
+  RCLCPP_WARN(logger_, "IK wasn't precise enough.");
+  return std::nullopt;
 }
 
 pinocchio::SE3 MotionPlanner::get_in_base_M_gripper_at_q(const Eigen::VectorXd &q,

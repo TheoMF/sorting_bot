@@ -484,16 +484,17 @@ std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypo
   pinocchio::SE3 des_in_base_M_gripper =
       pinocchio::SE3(z_angle_axis_rot.toRotationMatrix() * current_in_base_M_gripper.rotation(),
                      z_angle_axis_rot.toRotationMatrix() * current_in_base_M_gripper.translation());
-  Eigen::VectorXd q_above_object = motion_planner.get_inverse_kinematic_at_pose(current_q_, des_in_base_M_gripper);
+  std::optional<Eigen::VectorXd> q_above_object =
+      motion_planner.get_inverse_kinematic_at_pose(current_q_, des_in_base_M_gripper);
 
-  return {q_above_object};
+  return {q_above_object.value_or(current_q_)};
 }
 
 std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
   // Compute grasp coniguration.
   pinocchio::SE3 in_base_M_grasp =
       get_in_base_M_grasp(object_detection_to_sort_.in_base_M_frame.value(), object_detection_to_sort_.frame);
-  Eigen::VectorXd q_grasp = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_grasp);
+  std::optional<Eigen::VectorXd> q_grasp = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_grasp);
 
   // Compute translation from grasp frame to pre-grasp frame.
   Eigen::VectorXd in_base_translation_grasp_to_pre_grasp;
@@ -509,9 +510,10 @@ std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
   // Compute pre-grasp configuration.
   pinocchio::SE3 in_base_M_pre_grasp = pinocchio::SE3(
       in_base_M_grasp.rotation(), in_base_M_grasp.translation() + in_base_translation_grasp_to_pre_grasp);
-  Eigen::VectorXd q_pre_grasp = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_pre_grasp);
+  std::optional<Eigen::VectorXd> q_pre_grasp =
+      motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_pre_grasp);
 
-  return {q_pre_grasp, q_grasp};
+  return {q_pre_grasp.value_or(current_q_), q_grasp.value_or(current_q_)};
 }
 
 std::vector<Eigen::VectorXd> PlannerManager::get_placing_q_waypoints() const {
@@ -519,15 +521,17 @@ std::vector<Eigen::VectorXd> PlannerManager::get_placing_q_waypoints() const {
   pinocchio::SE3 in_base_M_ee = motion_planner.get_in_base_M_gripper_at_q(current_q_, ee_frame_name_);
   pinocchio::SE3 in_base_M_pre_placing =
       pinocchio::SE3(in_base_M_ee.rotation(), in_base_M_ee.translation() + in_base_translation_gripper_to_pre_placing_);
-  Eigen::VectorXd q_pre_placing = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_pre_placing);
+  std::optional<Eigen::VectorXd> q_pre_placing =
+      motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_pre_placing);
 
   // Compute placing configuration.
   pinocchio::SE3 in_box_M_compartment = in_box_M_compartment_map_.at(object_detection_to_sort_.frame);
   pinocchio::SE3 in_base_M_object_placing = in_base_M_box_ * in_box_M_compartment;
   pinocchio::SE3 in_base_M_placing = get_in_base_M_grasp(in_base_M_object_placing, object_detection_to_sort_.frame);
-  Eigen::VectorXd q_placing = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_placing);
+  std::optional<Eigen::VectorXd> q_placing =
+      motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_placing);
 
-  return {q_pre_placing, q_placing};
+  return {q_pre_placing.value_or(current_q_), q_placing.value_or(current_q_)};
 }
 
 std::tuple<Eigen::VectorXd, Eigen::VectorXd, bool> PlannerManager::get_traj_value_at_t() const {

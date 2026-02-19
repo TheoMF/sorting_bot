@@ -1,4 +1,4 @@
-#include "sorting_bot/inverse_kin_base.hpp"
+#include "sorting_bot/inverse_kin/inverse_kin_base.hpp"
 
 #include "sorting_bot/joint_trajectory_publisher_parameters.hpp"
 

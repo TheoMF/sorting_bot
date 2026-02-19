@@ -1,4 +1,4 @@
-#include "sorting_bot/inverse_kin.hpp"
+#include "sorting_bot/inverse_kin/inverse_kin.hpp"
 
 InverseKin::InverseKin() {
   // Inverse kinematic parameters default values.

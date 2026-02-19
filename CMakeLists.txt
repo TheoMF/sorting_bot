@@ -31,9 +31,9 @@ add_library(${PROJECT_NAME}_lib
   src/joint_trajectory_publisher.cpp
   src/planner_manager.cpp
   src/motion_planner.cpp
-  src/inverse_kin.cpp
-  src/inverse_kin_base.cpp
-  src/genetic_algo_inverse_kin.cpp
+  src/inverse_kin/inverse_kin.cpp
+  src/inverse_kin/inverse_kin_base.cpp
+  src/inverse_kin/genetic_algo_inverse_kin.cpp
   src/quintic_polynom.cpp
 )
 
