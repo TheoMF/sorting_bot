@@ -1,7 +1,9 @@
 # sorting_bot
 Project to do selective sort with open source robots.
 
-<img width="288" src="SO-101_pick_and_place.gif" />
+<img width="288" src="SO-101_pick_and_place.gif" />  
+
+Demos of the project are available for robot LeKiwi [here](https://youtu.be/8z1jm2o3kwE?si=UkZ776oeIiujN0lV) and for robot SO-101 [here](https://youtu.be/Cu2WPRdQeTQ?si=pOZc8sWhSyopvORJ).
 
 ## Installation
 
@@ -25,6 +27,7 @@ ros2 launch so_100_arm gazebo.launch.py gz_headless:=false
 # Simulation for Le Kiwi
 ros2 launch lekiwi lekiwi_full.launch.py use_rviz:=true use_fake_hardware:=true
 
+# Remaining nodes to launch
 ros2 launch sorting_bot detection_simulator.launch.py
 ros2 launch sorting_bot joint_trajectory_publisher.launch.py robot_name:=<robot_name>
 ```
@@ -32,7 +35,13 @@ ros2 launch sorting_bot joint_trajectory_publisher.launch.py robot_name:=<robot_
 ### Experiment
 Experiment is launched with commands
 ```bash
+# Experiment on SO-101
 ros2 launch so_100_arm hardware.launch.py
-ros2 launch so_100_arm rviz.launch.py
-ros2 launch sorting_bot apriltag_detection.launch.py
+
+# Experiment on LeKiwi
+ros2 launch lekiwi lekiwi_full.launch.py use_rviz:=false use_fake_hardware:=false
+
+# Remaining nodes to launch
+ros2 launch sorting_bot apriltag_detection.launch.py camera:=base
+ros2 launch sorting_bot apriltag_detection.launch.py camera:=hand
 ros2 launch sorting_bot joint_trajectory_publisher.launch.py robot_name:=<robot_name>
