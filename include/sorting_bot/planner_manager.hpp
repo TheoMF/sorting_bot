@@ -1,13 +1,14 @@
 #include <atomic>
 #include <mutex>
-#include <variant>
 #include <vector>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
 
+#include "sorting_bot/data_structures.hpp"
 #include "sorting_bot/motion_planner.hpp"
+#include "sorting_bot/ros_msg_conversions.hpp"
 
 enum StateMachine {
   SEARCHING_OBJECTS,
@@ -17,44 +18,27 @@ enum StateMachine {
   PLACING
 };
 
-enum ActionType { NONE, WAIT, MOVE_GRIPPER, MOVE_BASE, MOVE_ARM, SEARCH_OBJECT, SEARCH_BOX };
-
-struct Action {
-  ActionType type;
-  int id;
-  std::variant<std::monostate, double, Eigen::VectorXd> value;
-
-  const char *get_value_type_name() const {
-    return std::visit([](auto &v) -> std::type_index { return typeid(v); }, value).name();
+inline std::string get_state_as_string(const StateMachine &state) {
+  std::string state_name;
+  switch (state) {
+  case SEARCHING_OBJECTS:
+    state_name = "SEARCHING_OBJECTS";
+    break;
+  case GOING_ABOVE_OBJECT_POSE:
+    state_name = "GOING_ABOVE_OBJECT_POSE";
+    break;
+  case GRASPING:
+    state_name = "GRASPING";
+    break;
+  case SEARCHING_BOX:
+    state_name = "SEARCHING_BOX";
+    break;
+  case PLACING:
+    state_name = "PLACING";
+    break;
   }
-};
-
-std::string get_state_as_string(const StateMachine &state);
-
-std::string get_action_type_as_string(const ActionType &action_type);
-
-struct Detection {
-  std::string camera_frame, frame;
-  bool is_in_fov;
-  std::optional<builtin_interfaces::msg::Time> last_stamp;
-  std::optional<pinocchio::SE3> in_base_M_frame;
-
-  Detection() {
-    camera_frame = "";
-    frame = "";
-    is_in_fov = false;
-    last_stamp = std::nullopt;
-    in_base_M_frame = std::nullopt;
-  }
-
-  Detection(const std::string &_camera_frame, const std::string &_frame) : camera_frame(_camera_frame), frame(_frame) {
-    is_in_fov = false;
-    last_stamp = std::nullopt;
-    in_base_M_frame = std::nullopt;
-  }
-};
-
-pinocchio::SE3 transform_msg_to_SE3(const geometry_msgs::msg::Transform &transform);
+  return state_name;
+}
 
 class PlannerManager {
 public:
@@ -67,15 +51,12 @@ public:
   void initialize_in_box_M_compartment_map(const double &box_width, const double &box_length,
                                            const double &object_height_while_placing_in_box);
 
-  void publish_transform(const pinocchio::SE3 &transform, const std::string parent_frame,
-                         std::string child_frame) const;
-
   pinocchio::SE3 get_most_recent_in_parent_M_child(const std::string &parent_frame,
                                                    const std::string &child_frame) const;
 
   void update_detection_map(const std::map<std::string, Detection> &det_status_map);
 
-  std::optional<Detection> get_first_detection_currently_in_fov(const std::vector<std::string> &frames);
+  std::optional<Detection> get_first_detection_in_fov(const std::vector<std::string> &frames);
 
   void do_search_object_action();
 
@@ -102,7 +83,7 @@ public:
   void restart_state_actions();
 
   void update_state(const Eigen::VectorXd &current_q, const Eigen::VectorXd &base_pose,
-                    const rclcpp_action::ResultCode &nav_result, const rclcpp::Time ros_time);
+                    const rclcpp_action::ResultCode &nav_result, const rclcpp::Time &ros_time);
 
   Action get_current_action() const;
 

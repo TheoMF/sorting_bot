@@ -49,10 +49,6 @@ private:
 
   void publish_nav_goal(const std::vector<Eigen::VectorXd> &base_poses);
 
-  Eigen::VectorXd pose_msg_to_base_pose(const Pose &msg);
-
-  PoseStamped base_pose_to_pose_msg(const Eigen::VectorXd &base_pose);
-
   void send_gripper_pose_msg(const double &gripper_pose) const;
 
   void send_joint_trajectory_msg(const Eigen::VectorXd &q_ref, const Eigen::VectorXd &q_dot_ref) const;

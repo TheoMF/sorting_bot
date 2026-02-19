@@ -144,7 +144,7 @@ void JointTrajectoryPublisher::publish_nav_goal(const std::vector<Eigen::VectorX
   // Create navigation's waypoints msg.
   auto goal_msg = NavigateThroughPoses::Goal();
   for (const auto &base_pose : base_poses)
-    goal_msg.poses.push_back(base_pose_to_pose_msg(base_pose));
+    goal_msg.poses.push_back(base_pose_to_pose_msg(base_pose, params_.world_frame, this->get_clock()->now()));
 
   // Add callbacks to track navigation progress.
   auto send_goal_options = rclcpp_action::Client<NavigateThroughPoses>::SendGoalOptions();
@@ -153,29 +153,6 @@ void JointTrajectoryPublisher::publish_nav_goal(const std::vector<Eigen::VectorX
   send_goal_options.result_callback =
       std::bind(&JointTrajectoryPublisher::nav_result_callback, this, std::placeholders::_1);
   navigation_action_client_->async_send_goal(goal_msg, send_goal_options);
-}
-
-Eigen::VectorXd JointTrajectoryPublisher::pose_msg_to_base_pose(const Pose &msg) {
-  pinocchio::SE3::Quaternion quat(msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z);
-  double yaw = quat.toRotationMatrix().eulerAngles(0, 1, 2)[2];
-  std::vector<double> pose_vec = {msg.position.x, msg.position.y, yaw};
-  return Eigen::Map<Eigen::VectorXd>(pose_vec.data(), pose_vec.size());
-}
-
-PoseStamped JointTrajectoryPublisher::base_pose_to_pose_msg(const Eigen::VectorXd &base_pose) {
-  PoseStamped pose_msg;
-  pose_msg.header.stamp = this->get_clock()->now();
-  pose_msg.header.frame_id = params_.world_frame;
-  pose_msg.pose.position.x = base_pose[0];
-  pose_msg.pose.position.y = base_pose[1];
-  pose_msg.pose.position.z = 0.0;
-  Eigen::AngleAxisd angle_axis_rot = Eigen::AngleAxisd(base_pose[2], Eigen::Vector3d::UnitZ());
-  Eigen::Quaterniond quat_rot = Eigen::Quaterniond(angle_axis_rot.toRotationMatrix());
-  pose_msg.pose.orientation.x = quat_rot.x();
-  pose_msg.pose.orientation.y = quat_rot.y();
-  pose_msg.pose.orientation.z = quat_rot.z();
-  pose_msg.pose.orientation.w = quat_rot.w();
-  return pose_msg;
 }
 
 void JointTrajectoryPublisher::send_gripper_pose_msg(const double &gripper_pose) const {
@@ -343,14 +320,14 @@ void JointTrajectoryPublisher::detections_update_callback() {
         det_status.last_stamp = stamped_transform.header.stamp;
         TransformStamped in_base_M_frame_stamped =
             tf_buffer_->lookupTransform(params_.base_frame, det_status.frame, tf2::TimePointZero);
-        det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped.transform);
+        det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped);
       } else {
         if (stamped_transform.header.stamp != det_status.last_stamp.value()) {
           det_status.is_in_fov = true;
           det_status.last_stamp = stamped_transform.header.stamp;
           TransformStamped in_base_M_frame_stamped =
               tf_buffer_->lookupTransform(params_.base_frame, det_status.frame, tf2::TimePointZero);
-          det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped.transform);
+          det_status.in_base_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped);
         } else {
           det_status.is_in_fov = false;
         }

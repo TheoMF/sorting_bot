@@ -1,62 +1,5 @@
 #include "sorting_bot/planner_manager.hpp"
 
-std::string get_state_as_string(const StateMachine &state) {
-  std::string state_name;
-  switch (state) {
-  case SEARCHING_OBJECTS:
-    state_name = "SEARCHING_OBJECTS";
-    break;
-  case GOING_ABOVE_OBJECT_POSE:
-    state_name = "GOING_ABOVE_OBJECT_POSE";
-    break;
-  case GRASPING:
-    state_name = "GRASPING";
-    break;
-  case SEARCHING_BOX:
-    state_name = "SEARCHING_BOX";
-    break;
-  case PLACING:
-    state_name = "PLACING";
-    break;
-  }
-  return state_name;
-}
-
-std::string get_action_type_as_string(const ActionType &action_type) {
-  std::string action_name;
-  switch (action_type) {
-  case NONE:
-    action_name = "NONE";
-    break;
-  case WAIT:
-    action_name = "WAIT";
-    break;
-  case MOVE_GRIPPER:
-    action_name = "MOVE_GRIPPER";
-    break;
-  case MOVE_BASE:
-    action_name = "MOVE_BASE";
-    break;
-  case MOVE_ARM:
-    action_name = "MOVE_ARM";
-    break;
-  case SEARCH_OBJECT:
-    action_name = "SEARCH_OBJECT";
-    break;
-  case SEARCH_BOX:
-    action_name = "SEARCH_BOX";
-    break;
-  }
-  return action_name;
-}
-
-pinocchio::SE3 transform_msg_to_SE3(const geometry_msgs::msg::Transform &transform) {
-  Eigen::Quaterniond q(transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z);
-  Eigen::Vector3d t(transform.translation.x, transform.translation.y, transform.translation.z);
-  pinocchio::SE3 se3(q, t);
-  return se3;
-};
-
 void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer,
                                 const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster,
                                 const std::string &urdf, joint_trajectory_publisher::Params &params) {
@@ -158,31 +101,11 @@ void PlannerManager::initialize_in_box_M_compartment_map(const double &box_width
   }
 }
 
-void PlannerManager::publish_transform(const pinocchio::SE3 &transform, const std::string parent_frame,
-                                       std::string child_frame) const {
-  // Set msg frames.
-  geometry_msgs::msg::TransformStamped transform_msg;
-  transform_msg.header.frame_id = parent_frame;
-  transform_msg.child_frame_id = child_frame;
-
-  // Set transform msg translation and rotation.
-  transform_msg.transform.translation.x = transform.translation().x();
-  transform_msg.transform.translation.y = transform.translation().y();
-  transform_msg.transform.translation.z = transform.translation().z();
-  Eigen::Quaterniond q(transform.rotation());
-  transform_msg.transform.rotation.x = q.x();
-  transform_msg.transform.rotation.y = q.y();
-  transform_msg.transform.rotation.z = q.z();
-  transform_msg.transform.rotation.w = q.w();
-
-  tf_broadcaster_->sendTransform(transform_msg);
-}
-
 pinocchio::SE3 PlannerManager::get_most_recent_in_parent_M_child(const std::string &parent_frame,
                                                                  const std::string &child_frame) const {
   geometry_msgs::msg::TransformStamped stamped_transform =
       tf_buffer_->lookupTransform(parent_frame, child_frame, tf2::TimePointZero);
-  return transform_msg_to_SE3(stamped_transform.transform);
+  return transform_msg_to_SE3(stamped_transform);
 }
 
 void PlannerManager::update_detection_map(const std::map<std::string, Detection> &det_status_map) {
@@ -190,7 +113,7 @@ void PlannerManager::update_detection_map(const std::map<std::string, Detection>
   detection_map_ = det_status_map;
 }
 
-std::optional<Detection> PlannerManager::get_first_detection_currently_in_fov(const std::vector<std::string> &frames) {
+std::optional<Detection> PlannerManager::get_first_detection_in_fov(const std::vector<std::string> &frames) {
   std::lock_guard<std::mutex> guard(detection_map_mutex_);
   for (const std::string &frame : frames) {
     if (detection_map_[frame].is_in_fov) {
@@ -209,9 +132,9 @@ void PlannerManager::do_search_object_action() {
     objects_frame = {object_detection_to_sort_.frame};
 
   // Check for a detection currently in fov, set object_detection_to_sort_ if we found one.
-  std::optional<Detection> optional_detection = get_first_detection_currently_in_fov(objects_frame);
-  if (optional_detection.has_value()) {
-    object_detection_to_sort_ = optional_detection.value();
+  std::optional<Detection> detection_in_fov = get_first_detection_in_fov(objects_frame);
+  if (detection_in_fov.has_value()) {
+    object_detection_to_sort_ = detection_in_fov.value();
     RCLCPP_INFO(logger_, "Object %s is in fov.", object_detection_to_sort_.frame.c_str());
 
     // start searching objects at next location next time.
@@ -224,14 +147,14 @@ void PlannerManager::do_search_object_action() {
 }
 
 void PlannerManager::do_search_box_action() {
-  std::optional<Detection> optional_detection = get_first_detection_currently_in_fov(box_frames_);
-  if (optional_detection.has_value()) {
+  std::optional<Detection> detection_in_fov = get_first_detection_in_fov(box_frames_);
+  if (detection_in_fov.has_value()) {
     // Compute in_base_M_box with regards to the tag we found.
-    in_base_M_box_ = optional_detection.value().in_base_M_frame.value();
+    in_base_M_box_ = detection_in_fov.value().in_base_M_frame.value();
     in_base_M_box_.translation() =
         in_base_M_box_.translation() +
         in_base_M_box_.rotation() *
-            in_box_frame_translation_box_frame_to_box_center_map_[optional_detection.value().frame];
+            in_box_frame_translation_box_frame_to_box_center_map_[detection_in_fov.value().frame];
 
     // Compute in_world_M_box.
     pinocchio::SE3 in_world_M_base = get_most_recent_in_parent_M_child(world_frame_, base_frame_);
@@ -400,7 +323,7 @@ void PlannerManager::restart_state_actions() {
 }
 
 void PlannerManager::update_state(const Eigen::VectorXd &current_q, const Eigen::VectorXd &base_pose,
-                                  const rclcpp_action::ResultCode &nav_result, const rclcpp::Time ros_time) {
+                                  const rclcpp_action::ResultCode &nav_result, const rclcpp::Time &ros_time) {
   // Update state of the robot related attributes;
   current_q_ = current_q;
   base_pose_ = base_pose;
