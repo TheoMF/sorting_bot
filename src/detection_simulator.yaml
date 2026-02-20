@@ -1,0 +1,20 @@
+detection_simulator:
+  rate:
+    type: double
+    default_value: 20.0
+    description: "Rate of node in hertz."
+  detection_frames:
+    type: string_array
+    default_value: ["cardboard", "box_center"]
+    description: "Frame name of the detections we're gonna publish in tf."
+  __map_detection_frames:
+    parent_frame:
+      type: string
+      default_value: "base_footprint"
+      description: "Parent frame name of the detection frame."
+    in_parent_pose_detection:
+      type: double_array
+      description: "Pose (x,y,z,quat) of detection frame expressed in parent frame."
+      validation:
+        not_empty<>: []
+  

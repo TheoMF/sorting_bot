@@ -1,0 +1,12 @@
+---
+detection_simulator:
+  ros__parameters:
+    rate: 20.0
+    detection_frames: ["box_center", "cardboard"]
+    box_center:
+      parent_frame: "odom"
+      in_parent_pose_detection : [-0.27, 0.0, 0.0, 0.5, 0.5, 0.5, 0.5]
+    cardboard:
+      parent_frame: "base_footprint"
+      in_parent_pose_detection : [0.25, 0.1, 0.02, 0.0, 1.0, 0.0, 0.0]
+

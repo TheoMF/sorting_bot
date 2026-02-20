@@ -25,6 +25,9 @@ find_package(generate_parameter_library REQUIRED)
 generate_parameter_library(joint_trajectory_publisher_parameters
   src/joint_trajectory_publisher.yaml
 )
+generate_parameter_library(detection_simulator_parameters
+  src/detection_simulator.yaml
+)
 
 # Create library with source files
 add_library(${PROJECT_NAME}_lib
@@ -46,6 +49,7 @@ target_include_directories(${PROJECT_NAME}_lib PUBLIC
 target_link_libraries(${PROJECT_NAME}_lib PUBLIC
   pinocchio::pinocchio
   joint_trajectory_publisher_parameters
+  detection_simulator_parameters
 )
 
 ament_target_dependencies(${PROJECT_NAME}_lib PUBLIC
@@ -66,6 +70,7 @@ target_link_libraries(joint_trajectory_publisher ${PROJECT_NAME}_lib)
 ament_target_dependencies(joint_trajectory_publisher rclcpp)
 
 add_executable(detection_simulator src/detection_simulator.cpp)
+target_link_libraries(detection_simulator ${PROJECT_NAME}_lib)
 ament_target_dependencies(detection_simulator tf2_ros)
 
 

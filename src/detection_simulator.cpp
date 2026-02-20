@@ -5,51 +5,93 @@
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
-using namespace std::chrono_literals;
+#include "sorting_bot/data_structures.hpp"
+#include "sorting_bot/detection_simulator_parameters.hpp"
+#include "sorting_bot/ros_msg_conversions.hpp"
+
+namespace sorting_bot {
 
 class DetectionSimulator : public rclcpp::Node {
 public:
-  DetectionSimulator() : Node("vision_sim") {
+  DetectionSimulator() : Node("detection_simulator") {
+    // Load ROS parameters.
+    if (!load_parameters()) {
+      RCLCPP_ERROR(this->get_logger(), "Couldn't load the parameters, stopping the node.");
+      throw std::runtime_error("Failed to load parameters");
+    }
+
+    for (std::string &detection_frame : params_.detection_frames) {
+      // Initialize detection
+      std::string parent_frame = params_.detection_frames_map.at(detection_frame).parent_frame;
+      Detection detection = Detection(parent_frame, detection_frame);
+
+      // Convert detection pose to SE3.
+      std::vector<double> in_parent_pose_detection =
+          params_.detection_frames_map.at(detection_frame).in_parent_pose_detection;
+      Eigen::Quaterniond in_parent_rot_detection_quat =
+          Eigen::Quaterniond(in_parent_pose_detection[3], in_parent_pose_detection[4], in_parent_pose_detection[5],
+                             in_parent_pose_detection[6]);
+      Eigen::Vector3d in_parent_translation_detection =
+          Eigen::Vector3d(in_parent_pose_detection[0], in_parent_pose_detection[1], in_parent_pose_detection[2]);
+      detection.in_parent_M_frame =
+          pinocchio::SE3(in_parent_rot_detection_quat.toRotationMatrix(), in_parent_translation_detection);
+      RCLCPP_INFO(this->get_logger(), "Simulate detection with  parent frame : %s and detection frame : %s",
+                  parent_frame.c_str(), detection_frame.c_str());
+
+      detections_.push_back(detection);
+    }
+
+    // Initialize callback timer and tf broadcaster.
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-    timer_ = this->create_wall_timer(50ms, std::bind(&DetectionSimulator::detection_pub_callback, this));
+    timer_ = this->create_wall_timer(std::chrono::milliseconds((int)(1000.0 / params_.rate)),
+                                     std::bind(&DetectionSimulator::detection_pub_callback, this));
   }
 
 private:
-  void publish_transform(std::vector<double> translation, std::vector<double> rotation_quat,
-                         const std::string parent_frame, std::string child_frame) {
-    geometry_msgs::msg::TransformStamped transform_msg;
-    transform_msg.header.stamp = this->get_clock()->now();
-    transform_msg.header.frame_id = parent_frame;
-    transform_msg.child_frame_id = child_frame;
-
-    // set transform msg translation and rotation
-    transform_msg.transform.translation.x = translation[0];
-    transform_msg.transform.translation.y = translation[1];
-    transform_msg.transform.translation.z = translation[2];
-    transform_msg.transform.rotation.x = rotation_quat[0];
-    transform_msg.transform.rotation.y = rotation_quat[1];
-    transform_msg.transform.rotation.z = rotation_quat[2];
-    transform_msg.transform.rotation.w = rotation_quat[3];
-
-    // Send the transformation
-    tf_broadcaster_->sendTransform(transform_msg);
-  }
   void detection_pub_callback() {
-    std::vector<double> translation{0.25, 0.1, 0.02};
-    std::vector<double> rotation_quat{0., 1., 0., 0.};
-    publish_transform(translation, rotation_quat, "base_footprint", "cardboard");
+    for (const Detection &detection : detections_) {
+      // Ensure detection contains a transform.
+      if (!detection.in_parent_M_frame.has_value()) {
+        RCLCPP_WARN(this->get_logger(), "Detection with parent frame : %s and detection frame : %s has no transform",
+                    detection.parent_frame.c_str(), detection.frame.c_str());
+        continue;
+      }
 
-    std::vector<double> box_translation{-0.27, 0.0, 0.0};
-    std::vector<double> box_rotation_quat{0.5, 0.5, 0.5, 0.5};
-    publish_transform(box_translation, box_rotation_quat, "odom", "box_center");
+      // Send transform to tf.
+      geometry_msgs::msg::TransformStamped transform_msg =
+          SE3_to_transform_msg(detection.in_parent_M_frame.value(), detection.parent_frame, detection.frame);
+      transform_msg.header.stamp = this->get_clock()->now();
+      tf_broadcaster_->sendTransform(transform_msg);
+    }
   }
+
+  bool load_parameters() {
+    try {
+      parameter_listener_ = std::make_shared<detection_simulator::ParamListener>(get_node_parameters_interface());
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(this->get_logger(), "Exception thrown during the loading of the parameters: %s \n", e.what());
+      return false;
+    }
+    params_ = parameter_listener_->get_params();
+    return true;
+  }
+
+  // Vector of all detections to publish.
+  std::vector<Detection> detections_;
+
+  // Callback timer and tf broadcaster.
   rclcpp::TimerBase::SharedPtr timer_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+  // ROS params.
+  std::shared_ptr<detection_simulator::ParamListener> parameter_listener_;
+  detection_simulator::Params params_;
 };
+} // namespace sorting_bot
 
 int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<DetectionSimulator>());
+  rclcpp::spin(std::make_shared<sorting_bot::DetectionSimulator>());
   rclcpp::shutdown();
   return 0;
 }
