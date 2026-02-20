@@ -21,11 +21,12 @@ inline pinocchio::SE3 transform_msg_to_SE3(const TransformStamped &transform_msg
 };
 
 inline TransformStamped SE3_to_transform_msg(const pinocchio::SE3 &transform, const std::string &parent_frame,
-                                             const std::string &child_frame) {
+                                             const std::string &child_frame, const rclcpp::Time &time) {
   // Set msg frames.
   geometry_msgs::msg::TransformStamped transform_msg;
   transform_msg.header.frame_id = parent_frame;
   transform_msg.child_frame_id = child_frame;
+  transform_msg.header.stamp = time;
 
   // Set transform msg translation and rotation.
   transform_msg.transform.translation.x = transform.translation().x();
