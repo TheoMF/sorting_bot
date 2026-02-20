@@ -3,7 +3,7 @@ Project to do selective sort with open source robots.
 
 <img width="288" src="SO-101_pick_and_place.gif" />  
 
-Demos of the project are available for robot LeKiwi [here](https://youtu.be/8z1jm2o3kwE?si=UkZ776oeIiujN0lV) and for robot SO-101 [here](https://youtu.be/Cu2WPRdQeTQ?si=pOZc8sWhSyopvORJ).
+Demos of the project are available for mobile manipulator robot LeKiwi [here](https://youtu.be/8z1jm2o3kwE?si=UkZ776oeIiujN0lV) and for manipulator arm robot SO-101 [here](https://youtu.be/Cu2WPRdQeTQ?si=pOZc8sWhSyopvORJ).
 
 ## Installation
 
@@ -12,7 +12,7 @@ cd ~/ros2_ws
 git clone git@github.com:TheoMF/sorting_bot.git src/sorting_bot
 vcs import --shallow --recursive src < src/sorting_bot/dependencies.repos
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
+colcon build --symlink-install 
 source install/setup.bash
 ```
 
