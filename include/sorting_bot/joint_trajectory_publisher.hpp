@@ -76,7 +76,7 @@ private:
   rclcpp::Publisher<JointTrajectory>::SharedPtr joint_trajectory_publisher_;
   rclcpp::Publisher<Float64MultiArray>::SharedPtr so_101_gripper_publisher_;
   rclcpp::Publisher<JointTrajectory>::SharedPtr lekiwi_gripper_publisher_;
-  rclcpp::Subscription<JointState>::SharedPtr state_subscriber_;
+  rclcpp::Subscription<JointState>::SharedPtr joint_states_subscriber_;
   rclcpp::Subscription<Odometry>::SharedPtr odom_subscriber_;
   rclcpp::Subscription<String>::SharedPtr robot_description_subscriber_;
 

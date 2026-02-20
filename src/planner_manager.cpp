@@ -9,7 +9,14 @@ void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffe
   tf_buffer_ = tf_buffer;
   tf_broadcaster_ = tf_broadcaster;
 
-  // Set ROS parameters related attributes.
+  // Initialize other attributes from ROS parameters.
+  initialize_basic_attributes(params);
+  initialize_eigen_attributes(params);
+  build_frame_maps_from_params(params);
+  motion_planner.initialize(urdf, params);
+}
+
+void PlannerManager::initialize_basic_attributes(joint_trajectory_publisher::Params &params) {
   nq_ = params.nq;
   objects_frame_ = params.objects_frame;
   box_frames_ = params.box_frames;
@@ -24,11 +31,36 @@ void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffe
   search_box_y_dist_threshold_ = params.search_box_y_dist_threshold;
   wait_duration_before_vision_action_ = params.wait_duration_before_vision_action;
   wait_duration_after_gripper_moved_ = params.wait_duration_after_gripper_moved;
-  initialize_in_box_M_compartment_map(params.box_width, params.box_length, params.object_height_while_placing_in_box);
-  motion_planner.initialize(urdf, params);
+}
 
-  // Set ROS parameters related attributes requiring switch to Eigen containers.
+void PlannerManager::initialize_eigen_attributes(joint_trajectory_publisher::Params &params) {
+  // Set base_waypoint_vec.
+  for (std::string &base_waypoint_name : params.base_waypoint_names) {
+    std::vector<double> base_waypoint_vec = params.base_waypoint_names_map.at(base_waypoint_name).base_waypoint;
+    Eigen::Vector3d base_waypoint = Eigen::Map<Eigen::Vector3d>(base_waypoint_vec.data(), base_waypoint_vec.size());
+    base_waypoint_vec_.push_back(base_waypoint);
+  }
+
+  // Set qs_searching_objects.
+  std::vector<std::vector<double>> qs_searching_objects = {params.q_searching_object, params.q_searching_object,
+                                                           params.q_searching_object};
+  qs_searching_objects[1][0] -= params.q0_shift_q_searching_object;
+  qs_searching_objects[2][0] += params.q0_shift_q_searching_object;
+  for (std::vector<double> &q_searching_objects : qs_searching_objects)
+    qs_searching_objects_.push_back(
+        Eigen::Map<Eigen::VectorXd>(q_searching_objects.data(), q_searching_objects.size()));
   q_base_moving_ = Eigen::Map<Eigen::VectorXd>(params.q_base_moving.data(), params.q_base_moving.size());
+  qs_searching_objects_.push_back(q_base_moving_);
+
+  // Set in_world_M_box.
+  Eigen::Quaterniond in_world_rot_box_quat =
+      Eigen::Quaterniond(params.in_world_pose_box[3], params.in_world_pose_box[4], params.in_world_pose_box[5],
+                         params.in_world_pose_box[6]);
+  Eigen::Vector3d in_world_translation_world_to_box =
+      Eigen::Vector3d(params.in_world_pose_box[0], params.in_world_pose_box[1], params.in_world_pose_box[2]);
+  in_world_M_box_ = pinocchio::SE3(in_world_rot_box_quat.toRotationMatrix(), in_world_translation_world_to_box);
+
+  // Set remaining attributes requiring switch to Eigen containers.
   in_grasp_translation_grasp_to_pre_grasp_ = Eigen::Map<Eigen::Vector3d>(
       params.in_grasp_translation_grasp_to_pre_grasp.data(), params.in_grasp_translation_grasp_to_pre_grasp.size());
   in_base_translation_gripper_to_pre_placing_ =
@@ -41,15 +73,25 @@ void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffe
   in_world_rot_front_grasp_quat_ =
       Eigen::Quaterniond(params.in_world_rot_front_grasp_quat[0], params.in_world_rot_front_grasp_quat[1],
                          params.in_world_rot_front_grasp_quat[2], params.in_world_rot_front_grasp_quat[3]);
+  initialize_in_box_M_compartment_map(params.box_width, params.box_length, params.object_height_while_placing_in_box);
+}
 
-  // Set in_world_M_box.
-  Eigen::Quaterniond in_world_rot_box_quat =
-      Eigen::Quaterniond(params.in_world_pose_box[3], params.in_world_pose_box[4], params.in_world_pose_box[5],
-                         params.in_world_pose_box[6]);
-  Eigen::Vector3d in_world_translation_world_to_box =
-      Eigen::Vector3d(params.in_world_pose_box[0], params.in_world_pose_box[1], params.in_world_pose_box[2]);
-  in_world_M_box_ = pinocchio::SE3(in_world_rot_box_quat.toRotationMatrix(), in_world_translation_world_to_box);
+void PlannerManager::initialize_in_box_M_compartment_map(const double &box_width, const double &box_length,
+                                                         const double &object_height_while_placing_in_box) {
+  Eigen::Quaterniond x_axis_rot_pi_quat(0., 1., 0., 0.);
+  int object_idx = 0;
+  for (double length_idx = -1.; length_idx == -1. || length_idx == 1.; length_idx += 2.) {
+    for (double width_idx = -1.; width_idx == -1. || width_idx == 1.; width_idx += 2.) {
+      Eigen::Vector3d box_to_compartment_trans(length_idx * box_length / 4.0, object_height_while_placing_in_box,
+                                               -box_width / 2.0 + width_idx * box_width / 4.0);
+      pinocchio::SE3 in_box_M_compartment(x_axis_rot_pi_quat, box_to_compartment_trans);
+      in_box_M_compartment_map_[objects_frame_[object_idx]] = in_box_M_compartment;
+      object_idx++;
+    }
+  }
+}
 
+void PlannerManager::build_frame_maps_from_params(joint_trajectory_publisher::Params &params) {
   // Set objects frame related maps.
   for (std::string &object_frame : params.objects_frame) {
     std::vector<double> in_grasp_translation_object_to_grasp_vec =
@@ -68,38 +110,6 @@ void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffe
         Eigen::Map<Eigen::Vector3d>(in_box_frame_translation_box_frame_to_box_center_vec.data(),
                                     in_box_frame_translation_box_frame_to_box_center_vec.size());
     in_box_frame_translation_box_frame_to_box_center_map_[box_frame] = in_box_frame_translation_box_frame_to_box_center;
-  }
-
-  // Set base_waypoint_vec.
-  for (std::string &base_waypoint_name : params.base_waypoint_names) {
-    std::vector<double> base_waypoint_vec = params.base_waypoint_names_map.at(base_waypoint_name).base_waypoint;
-    Eigen::Vector3d base_waypoint = Eigen::Map<Eigen::Vector3d>(base_waypoint_vec.data(), base_waypoint_vec.size());
-    base_waypoint_vec_.push_back(base_waypoint);
-  }
-
-  // Set qs_searching_objects.
-  std::vector<std::vector<double>> qs_searching_objects = {params.q_searching_object, params.q_searching_object,
-                                                           params.q_searching_object};
-  qs_searching_objects[1][0] -= params.q0_shift_q_searching_object;
-  qs_searching_objects[2][0] += params.q0_shift_q_searching_object;
-  for (std::vector<double> &q_searching_objects : qs_searching_objects)
-    qs_searching_objects_.push_back(
-        Eigen::Map<Eigen::VectorXd>(q_searching_objects.data(), q_searching_objects.size()));
-  qs_searching_objects_.push_back(q_base_moving_);
-}
-
-void PlannerManager::initialize_in_box_M_compartment_map(const double &box_width, const double &box_length,
-                                                         const double &object_height_while_placing_in_box) {
-  Eigen::Quaterniond x_axis_rot_pi_quat(0., 1., 0., 0.);
-  int object_idx = 0;
-  for (double length_idx = -1.; length_idx == -1. || length_idx == 1.; length_idx += 2.) {
-    for (double width_idx = -1.; width_idx == -1. || width_idx == 1.; width_idx += 2.) {
-      Eigen::Vector3d box_to_compartment_trans(length_idx * box_length / 4.0, object_height_while_placing_in_box,
-                                               -box_width / 2.0 + width_idx * box_width / 4.0);
-      pinocchio::SE3 in_box_M_compartment(x_axis_rot_pi_quat, box_to_compartment_trans);
-      in_box_M_compartment_map_[objects_frame_[object_idx]] = in_box_M_compartment;
-      object_idx++;
-    }
   }
 }
 

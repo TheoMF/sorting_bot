@@ -53,8 +53,14 @@ public:
                   const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster, const std::string &urdf,
                   joint_trajectory_publisher::Params &params);
 
+  void initialize_basic_attributes(joint_trajectory_publisher::Params &params);
+
+  void initialize_eigen_attributes(joint_trajectory_publisher::Params &params);
+
   void initialize_in_box_M_compartment_map(const double &box_width, const double &box_length,
                                            const double &object_height_while_placing_in_box);
+
+  void build_frame_maps_from_params(joint_trajectory_publisher::Params &params);
 
   pinocchio::SE3 get_most_recent_in_parent_M_child(const std::string &parent_frame,
                                                    const std::string &child_frame) const;

@@ -3,56 +3,60 @@
 namespace sorting_bot {
 
 JointTrajectoryPublisher::JointTrajectoryPublisher() : Node("joint_trajectory_publisher") {
+  // Load ROS parameters.
   if (!load_parameters()) {
     RCLCPP_ERROR(this->get_logger(), "Couldn't load the parameters, stopping the node.");
     throw std::runtime_error("Failed to load parameters");
   }
 
-  // Joint trajectory publisher
-  rclcpp::QoS joint_trajectory_qos_profile(10);
-  joint_trajectory_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
-  joint_trajectory_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
-  joint_trajectory_publisher_ =
-      this->create_publisher<JointTrajectory>(params_.joint_trajectory_topic, joint_trajectory_qos_profile);
+  // QoS definitions.
+  rclcpp::QoS qos_joint_trajectory = rclcpp::QoS(rclcpp::KeepLast(10))
+                                         .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT)
+                                         .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+  rclcpp::QoS qos_gripper = rclcpp::QoS(rclcpp::KeepLast(10))
+                                .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT)
+                                .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+  rclcpp::QoS qos_joint_states = rclcpp::QoS(rclcpp::KeepLast(10))
+                                     .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+                                     .durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+  rclcpp::QoS qos_robot_description = rclcpp::QoS(rclcpp::KeepLast(10))
+                                          .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+                                          .durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+  rclcpp::QoS qos_odometry = rclcpp::QoS(rclcpp::KeepLast(10))
+                                 .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+                                 .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
 
-  // Action client for navigation
-  navigation_action_client_ = rclcpp_action::create_client<NavigateThroughPoses>(this, "/navigate_through_poses");
+  // Joint states subscriber.
+  joint_states_subscriber_ = this->create_subscription<JointState>(
+      "/joint_states", qos_joint_states,
+      std::bind(&JointTrajectoryPublisher::joint_states_callback, this, std::placeholders::_1));
+
+  // Robot description subscriber
+  robot_description_subscriber_ = this->create_subscription<String>(
+      "/robot_description", qos_robot_description,
+      std::bind(&JointTrajectoryPublisher::robot_description_callback, this, std::placeholders::_1));
+
+  // Odometry subscriber
+  odom_subscriber_ = this->create_subscription<Odometry>(
+      "/odom", qos_odometry, std::bind(&JointTrajectoryPublisher::odom_callback, this, std::placeholders::_1));
+
+  // Joint trajectory publisher
+  joint_trajectory_publisher_ =
+      this->create_publisher<JointTrajectory>(params_.joint_trajectory_topic, qos_joint_trajectory);
 
   // Gripper position publisher
   if (params_.robot_name == "SO-101") {
-    so_101_gripper_publisher_ =
-        this->create_publisher<Float64MultiArray>(params_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+    so_101_gripper_publisher_ = this->create_publisher<Float64MultiArray>(params_.gripper_command_topic, qos_gripper);
     lekiwi_gripper_publisher_ = nullptr;
   } else if (params_.robot_name == "LeKiwi") {
     so_101_gripper_publisher_ = nullptr;
-    lekiwi_gripper_publisher_ =
-        this->create_publisher<JointTrajectory>(params_.gripper_command_topic, rclcpp::SystemDefaultsQoS());
+    lekiwi_gripper_publisher_ = this->create_publisher<JointTrajectory>(params_.gripper_command_topic, qos_gripper);
   }
 
-  // Joint states subscriber
-  rclcpp::QoS joint_states_qos_profile(10);
-  joint_states_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
-  joint_states_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-  state_subscriber_ = this->create_subscription<JointState>(
-      "/joint_states", joint_states_qos_profile,
-      std::bind(&JointTrajectoryPublisher::joint_states_callback, this, std::placeholders::_1));
+  // Action client for navigation.
+  navigation_action_client_ = rclcpp_action::create_client<NavigateThroughPoses>(this, "/navigate_through_poses");
 
-  // Odometry subscriber
-  rclcpp::QoS odometry_qos_profile(10);
-  odometry_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
-  odometry_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
-  odom_subscriber_ = this->create_subscription<Odometry>(
-      "/odom", odometry_qos_profile, std::bind(&JointTrajectoryPublisher::odom_callback, this, std::placeholders::_1));
-
-  // Robot description subscriber
-  rclcpp::QoS robot_description_qos_profile(10);
-  robot_description_qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
-  robot_description_qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-  robot_description_subscriber_ = this->create_subscription<String>(
-      "/robot_description", robot_description_qos_profile,
-      std::bind(&JointTrajectoryPublisher::robot_description_callback, this, std::placeholders::_1));
-
-  // Timer to publish joint trajectory
+  // Timer to publish joint trajectory.
   joint_traj_pub_timer_ = this->create_wall_timer(std::chrono::milliseconds((int)(1000.0 / params_.rate)),
                                                   std::bind(&JointTrajectoryPublisher::joint_traj_pub_callback, this));
 
@@ -177,14 +181,18 @@ void JointTrajectoryPublisher::send_gripper_pose_msg(const double &gripper_pose)
 
 void JointTrajectoryPublisher::send_joint_trajectory_msg(const Eigen::VectorXd &q_ref,
                                                          const Eigen::VectorXd &q_dot_ref) const {
-  JointTrajectory joint_trajectory_msg;
-  joint_trajectory_msg.joint_names = params_.joint_names;
-  JointTrajectoryPoint joint_trajectory_point_msg;
+  // Switch input trajectory point to std::vector.
   std::vector<double> q_ref_vec(q_ref.data(), q_ref.data() + q_ref.size());
   std::vector<double> q_dot_ref_vec(q_dot_ref.data(), q_dot_ref.data() + q_dot_ref.size());
+
+  // Create joint trajectory point msg.
+  JointTrajectoryPoint joint_trajectory_point_msg;
   joint_trajectory_point_msg.positions = q_ref_vec;
   joint_trajectory_point_msg.velocities = q_dot_ref_vec;
 
+  // Create and send joint trajectory msg.
+  JointTrajectory joint_trajectory_msg;
+  joint_trajectory_msg.joint_names = params_.joint_names;
   joint_trajectory_msg.points = {joint_trajectory_point_msg};
   joint_trajectory_publisher_->publish(joint_trajectory_msg);
 }
