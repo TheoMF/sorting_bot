@@ -11,23 +11,24 @@
 namespace sorting_bot {
 
 struct Detection {
-  std::string camera_frame, frame;
+  std::string parent_frame, frame;
   bool is_in_fov;
   std::optional<builtin_interfaces::msg::Time> last_stamp;
-  std::optional<pinocchio::SE3> in_base_M_frame;
+  std::optional<pinocchio::SE3> in_parent_M_frame;
 
   Detection() {
-    camera_frame = "";
+    parent_frame = "";
     frame = "";
     is_in_fov = false;
     last_stamp = std::nullopt;
-    in_base_M_frame = std::nullopt;
+    in_parent_M_frame = std::nullopt;
   }
 
-  Detection(const std::string &_camera_frame, const std::string &_frame) : camera_frame(_camera_frame), frame(_frame) {
+  Detection(const std::string &arg_parent_frame, const std::string &arg_frame)
+      : parent_frame(arg_parent_frame), frame(arg_frame) {
     is_in_fov = false;
     last_stamp = std::nullopt;
-    in_base_M_frame = std::nullopt;
+    in_parent_M_frame = std::nullopt;
   }
 };
 

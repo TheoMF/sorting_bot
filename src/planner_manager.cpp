@@ -162,7 +162,7 @@ void PlannerManager::do_search_box_action() {
   std::optional<Detection> detection_in_fov = get_first_detection_in_fov(box_frames_);
   if (detection_in_fov.has_value()) {
     // Compute in_base_M_box with regards to the tag we found.
-    in_base_M_box_ = detection_in_fov.value().in_base_M_frame.value();
+    in_base_M_box_ = detection_in_fov.value().in_parent_M_frame.value();
     in_base_M_box_.translation() =
         in_base_M_box_.translation() +
         in_base_M_box_.rotation() *
@@ -410,7 +410,7 @@ std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypo
       std::atan2(current_in_base_M_gripper.translation()[1], current_in_base_M_gripper.translation()[0]);
 
   // Evaluate yaw angle of gripper to be in top of object with respect to world frame.
-  pinocchio::SE3 in_base_M_object = object_detection_to_sort_.in_base_M_frame.value();
+  pinocchio::SE3 in_base_M_object = object_detection_to_sort_.in_parent_M_frame.value();
   double des_gripper_yaw_angle = std::atan2(in_base_M_object.translation()[1], in_base_M_object.translation()[0]);
 
   // Compute configuration above object pose.
@@ -428,7 +428,7 @@ std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypo
 std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
   // Compute grasp coniguration.
   pinocchio::SE3 in_base_M_grasp =
-      get_in_base_M_grasp(object_detection_to_sort_.in_base_M_frame.value(), object_detection_to_sort_.frame);
+      get_in_base_M_grasp(object_detection_to_sort_.in_parent_M_frame.value(), object_detection_to_sort_.frame);
   std::optional<Eigen::VectorXd> q_grasp = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_grasp);
 
   // Compute translation from grasp frame to pre-grasp frame.
