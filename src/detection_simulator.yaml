@@ -12,7 +12,7 @@ detection_simulator:
       type: string
       default_value: "base_footprint"
       description: "Parent frame name of the detection frame."
-    in_parent_pose_detection:
+    in_parent_pose_child:
       type: double_array
       description: "Pose (x,y,z,quat) of detection frame expressed in parent frame."
       validation:

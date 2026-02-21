@@ -113,6 +113,12 @@ void PlannerManager::build_frame_maps_from_params(joint_trajectory_publisher::Pa
   }
 }
 
+pinocchio::SE3 PlannerManager::get_in_parent_M_child(const std::string &parent_frame, const std::string &child_frame,
+                                                     const rclcpp::Time &time) const {
+  geometry_msgs::msg::TransformStamped stamped_transform = tf_buffer_->lookupTransform(parent_frame, child_frame, time);
+  return transform_msg_to_SE3(stamped_transform);
+}
+
 pinocchio::SE3 PlannerManager::get_most_recent_in_parent_M_child(const std::string &parent_frame,
                                                                  const std::string &child_frame) const {
   geometry_msgs::msg::TransformStamped stamped_transform =
@@ -141,13 +147,13 @@ void PlannerManager::do_search_object_action() {
   if (state_ == SEARCHING_OBJECTS)
     objects_frame = objects_frame_;
   else
-    objects_frame = {object_detection_to_sort_.frame};
+    objects_frame = {object_detection_to_sort_.child_frame};
 
   // Check for a detection currently in fov, set object_detection_to_sort_ if we found one.
   std::optional<Detection> detection_in_fov = get_first_detection_in_fov(objects_frame);
   if (detection_in_fov.has_value()) {
     object_detection_to_sort_ = detection_in_fov.value();
-    RCLCPP_INFO(logger_, "Object %s is in fov.", object_detection_to_sort_.frame.c_str());
+    RCLCPP_INFO(logger_, "Object %s is in fov.", object_detection_to_sort_.child_frame.c_str());
 
     // start searching objects at next location next time.
     if (state_ == SEARCHING_OBJECTS)
@@ -161,15 +167,17 @@ void PlannerManager::do_search_object_action() {
 void PlannerManager::do_search_box_action() {
   std::optional<Detection> detection_in_fov = get_first_detection_in_fov(box_frames_);
   if (detection_in_fov.has_value()) {
-    // Compute in_base_M_box with regards to the tag we found.
-    in_base_M_box_ = detection_in_fov.value().in_parent_M_frame.value();
-    in_base_M_box_.translation() =
-        in_base_M_box_.translation() +
-        in_base_M_box_.rotation() *
-            in_box_frame_translation_box_frame_to_box_center_map_[detection_in_fov.value().frame];
+    // Compute in_camera_M_box with regards to the tag we found.
+    pinocchio::SE3 in_base_M_box_frame = detection_in_fov.value().in_base_M_child_frame.value();
+    Eigen::Vector3d in_base_translation_box_frame_to_box_center =
+        in_base_M_box_frame.rotation() *
+        in_box_frame_translation_box_frame_to_box_center_map_[detection_in_fov.value().child_frame];
+    in_base_M_box_ = pinocchio::SE3(in_base_M_box_frame.rotation(),
+                                    in_base_M_box_frame.translation() + in_base_translation_box_frame_to_box_center);
 
     // Compute in_world_M_box.
-    pinocchio::SE3 in_world_M_base = get_most_recent_in_parent_M_child(world_frame_, base_frame_);
+    pinocchio::SE3 in_world_M_base =
+        get_in_parent_M_child(world_frame_, base_frame_, detection_in_fov.value().last_stamp.value());
     in_world_M_box_ = in_world_M_base * in_base_M_box_;
   } else {
     RCLCPP_INFO(logger_, "didn't found the box, restart state actions");
@@ -410,7 +418,7 @@ std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypo
       std::atan2(current_in_base_M_gripper.translation()[1], current_in_base_M_gripper.translation()[0]);
 
   // Evaluate yaw angle of gripper to be in top of object with respect to world frame.
-  pinocchio::SE3 in_base_M_object = object_detection_to_sort_.in_parent_M_frame.value();
+  pinocchio::SE3 in_base_M_object = object_detection_to_sort_.in_base_M_child_frame.value();
   double des_gripper_yaw_angle = std::atan2(in_base_M_object.translation()[1], in_base_M_object.translation()[0]);
 
   // Compute configuration above object pose.
@@ -427,13 +435,13 @@ std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypo
 
 std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
   // Compute grasp coniguration.
-  pinocchio::SE3 in_base_M_grasp =
-      get_in_base_M_grasp(object_detection_to_sort_.in_parent_M_frame.value(), object_detection_to_sort_.frame);
+  pinocchio::SE3 in_base_M_grasp = get_in_base_M_grasp(object_detection_to_sort_.in_base_M_child_frame.value(),
+                                                       object_detection_to_sort_.child_frame);
   std::optional<Eigen::VectorXd> q_grasp = motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_grasp);
 
   // Compute translation from grasp frame to pre-grasp frame.
   Eigen::VectorXd in_base_translation_grasp_to_pre_grasp;
-  bool grasp_from_top = objects_to_grasp_from_top_map_.at(object_detection_to_sort_.frame);
+  bool grasp_from_top = objects_to_grasp_from_top_map_.at(object_detection_to_sort_.child_frame);
   if (grasp_from_top) {
     // Rotate in_grasp_translation_grasp_to_pre_grasp_ along x axis if grasping from top.
     Eigen::AngleAxisd x_rot_pi_2_angle_axis = Eigen::AngleAxisd(M_PI_2, Eigen::Vector3d::UnitX());
@@ -453,16 +461,17 @@ std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
 
 std::vector<Eigen::VectorXd> PlannerManager::get_placing_q_waypoints() const {
   // Compute pre-placing configuration.
-  pinocchio::SE3 in_base_M_ee = motion_planner.get_in_base_M_gripper_at_q(current_q_, ee_frame_name_);
-  pinocchio::SE3 in_base_M_pre_placing =
-      pinocchio::SE3(in_base_M_ee.rotation(), in_base_M_ee.translation() + in_base_translation_gripper_to_pre_placing_);
+  pinocchio::SE3 in_base_M_gripper = motion_planner.get_in_base_M_gripper_at_q(current_q_, ee_frame_name_);
+  pinocchio::SE3 in_base_M_pre_placing = pinocchio::SE3(
+      in_base_M_gripper.rotation(), in_base_M_gripper.translation() + in_base_translation_gripper_to_pre_placing_);
   std::optional<Eigen::VectorXd> q_pre_placing =
       motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_pre_placing);
 
   // Compute placing configuration.
-  pinocchio::SE3 in_box_M_compartment = in_box_M_compartment_map_.at(object_detection_to_sort_.frame);
+  pinocchio::SE3 in_box_M_compartment = in_box_M_compartment_map_.at(object_detection_to_sort_.child_frame);
   pinocchio::SE3 in_base_M_object_placing = in_base_M_box_ * in_box_M_compartment;
-  pinocchio::SE3 in_base_M_placing = get_in_base_M_grasp(in_base_M_object_placing, object_detection_to_sort_.frame);
+  pinocchio::SE3 in_base_M_placing =
+      get_in_base_M_grasp(in_base_M_object_placing, object_detection_to_sort_.child_frame);
   std::optional<Eigen::VectorXd> q_placing =
       motion_planner.get_inverse_kinematic_at_pose(current_q_, in_base_M_placing);
 

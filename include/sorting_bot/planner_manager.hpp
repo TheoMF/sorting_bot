@@ -62,6 +62,9 @@ public:
 
   void build_frame_maps_from_params(joint_trajectory_publisher::Params &params);
 
+  pinocchio::SE3 get_in_parent_M_child(const std::string &parent_frame, const std::string &child_frame,
+                                       const rclcpp::Time &time) const;
+
   pinocchio::SE3 get_most_recent_in_parent_M_child(const std::string &parent_frame,
                                                    const std::string &child_frame) const;
 

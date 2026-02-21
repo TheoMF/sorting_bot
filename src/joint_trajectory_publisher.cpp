@@ -319,27 +319,23 @@ void JointTrajectoryPublisher::joint_traj_pub_callback() {
 }
 
 void JointTrajectoryPublisher::detections_update_callback() {
-  for (auto &[frame, det_status] : detection_map_) {
+  for (auto &[frame, detection] : detection_map_) {
     try {
-      TransformStamped stamped_transform =
-          tf_buffer_->lookupTransform(det_status.parent_frame, det_status.frame, tf2::TimePointZero);
-      if (!det_status.last_stamp.has_value()) {
-        det_status.is_in_fov = true;
-        det_status.last_stamp = stamped_transform.header.stamp;
+      // Determine if detection is active, ie is in fov (field of view).
+      TransformStamped in_parent_M_child_stamped =
+          tf_buffer_->lookupTransform(detection.parent_frame, detection.child_frame, tf2::TimePointZero);
+      bool object_in_fov = in_parent_M_child_stamped.header.stamp != detection.last_stamp.value_or(rclcpp::Time(0, 0));
+
+      // If in fov update detection in map.
+      if (object_in_fov) {
+        detection.is_in_fov = true;
+        detection.last_stamp = in_parent_M_child_stamped.header.stamp;
         TransformStamped in_base_M_frame_stamped =
-            tf_buffer_->lookupTransform(params_.base_frame, det_status.frame, tf2::TimePointZero);
-        det_status.in_parent_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped);
-      } else {
-        if (stamped_transform.header.stamp != det_status.last_stamp.value()) {
-          det_status.is_in_fov = true;
-          det_status.last_stamp = stamped_transform.header.stamp;
-          TransformStamped in_base_M_frame_stamped =
-              tf_buffer_->lookupTransform(params_.base_frame, det_status.frame, tf2::TimePointZero);
-          det_status.in_parent_M_frame = transform_msg_to_SE3(in_base_M_frame_stamped);
-        } else {
-          det_status.is_in_fov = false;
-        }
-      }
+            tf_buffer_->lookupTransform(params_.base_frame, detection.child_frame, tf2::TimePointZero);
+        detection.in_base_M_child_frame = transform_msg_to_SE3(in_base_M_frame_stamped);
+      } else
+        detection.is_in_fov = false;
+
     } catch (const tf2::TransformException &ex) {
       RCLCPP_DEBUG(this->get_logger(), "Didn't found tranform for frame %s , error : %s", frame.c_str(), ex.what());
     }
