@@ -15,13 +15,16 @@ namespace sorting_bot {
 
 class MotionPlanner {
 public:
+  using MotionPlannerParams = joint_trajectory_publisher::Params::PlannerManager::MotionPlanner;
+
   MotionPlanner() {}
-  void initialize(std::string urdf, joint_trajectory_publisher::Params params);
+
+  void initialize(const std::string &urdf, const std::string &robot_name, MotionPlannerParams &params);
 
   std::optional<Eigen::VectorXd> get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
                                                                const pinocchio::SE3 &des_in_base_M_gripper) const;
 
-  pinocchio::SE3 get_in_base_M_gripper_at_q(const Eigen::VectorXd &q, const std::string &frame_name) const;
+  pinocchio::SE3 get_in_base_M_gripper_at_q(const Eigen::VectorXd &q) const;
 
   void set_motion_planning(const Eigen::VectorXd &q_start, const std::vector<Eigen::VectorXd> &q_waypoints);
 
@@ -33,9 +36,9 @@ private:
   rclcpp::Logger logger_ = rclcpp::get_logger("joint_trajectory_publisher");
   std::shared_ptr<pinocchio::Model> model_;
   std::shared_ptr<pinocchio::Data> data_;
-  std::string ee_frame_name_;
-  int ee_frame_id_, nq_;
-  double min_precision_threshold_;
+  std::string gripper_frame_;
+  int gripper_frame_id_, nq_;
+  double ik_min_precision_threshold_;
   bool use_genetic_algo_;
   QuinticPolynom quintic_polynom_;
   GeneticAlgoInverseKin genetic_algo_inverse_kin_;

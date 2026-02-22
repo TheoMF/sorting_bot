@@ -28,13 +28,17 @@ using MultiArrayDimension = std_msgs::msg::MultiArrayDimension;
 using JointState = sensor_msgs::msg::JointState;
 using Odometry = nav_msgs::msg::Odometry;
 using String = std_msgs::msg::String;
+using ParamListener = joint_trajectory_publisher::ParamListener;
+using Params = joint_trajectory_publisher::Params;
 
 class JointTrajectoryPublisher : public rclcpp::Node {
 public:
   JointTrajectoryPublisher();
 
 private:
-  bool load_parameters();
+  bool load_params();
+
+  void initialize_params_related_attributes();
 
   void joint_states_callback(const JointState &msg);
 
@@ -68,8 +72,8 @@ private:
   void detections_update_callback();
 
   // ROS params.
-  std::shared_ptr<joint_trajectory_publisher::ParamListener> parameter_listener_;
-  joint_trajectory_publisher::Params params_;
+  std::shared_ptr<ParamListener> parameter_listener_;
+  Params params_;
 
   // ROS publishers, subscribers and timers.
   rclcpp::TimerBase::SharedPtr joint_traj_pub_timer_, detections_update_timer_;
@@ -83,6 +87,8 @@ private:
   // Navigation attributes.
   rclcpp_action::Client<NavigateThroughPoses>::SharedPtr navigation_action_client_;
   rclcpp_action::ResultCode nav_result_ = rclcpp_action::ResultCode::UNKNOWN;
+  std::vector<Eigen::VectorXd> last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
+  Eigen::VectorXd base_pose_ = Eigen::VectorXd::Zero(3);
 
   // tf attributes.
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
@@ -90,13 +96,16 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // Non-ROS related attributes.
-  std::map<std::string, Detection> detection_map_;
   PlannerManager planner_manager_;
+  double rate_;
+  int nq_;
+  std::string robot_name_, world_frame_, base_frame_;
+  std::map<std::string, Detection> detection_map_;
   ActionType last_action_ = NONE;
   std::mutex current_q_mutex_;
-  int nq_;
-  Eigen::VectorXd current_q_, q_traj_, q_dot_traj_, integrated_q_err_, last_q_, base_pose_ = Eigen::VectorXd::Zero(3);
-  std::vector<Eigen::VectorXd> last_sent_base_waypoints = {Eigen::Vector3d(-10., -10., 0.)};
+  std::vector<std::string> joint_names_;
+  std::vector<double> integration_coeffs_after_traj_, integration_coeffs_during_traj_, friction_compensation_;
+  Eigen::VectorXd current_q_, q_traj_, q_dot_traj_, integrated_q_err_, last_q_;
   bool over_traj_total_duration_ = false, first_joint_traj_pub_callback_iter_ = true, traj_ready_ = false;
   std::atomic<bool> joint_states_callback_ready_ = false, robot_description_ready_ = false;
 };

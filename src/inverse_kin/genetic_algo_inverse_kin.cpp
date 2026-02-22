@@ -18,15 +18,15 @@ double Individual::score() const { return score_; }
 
 void Individual::set_score(const Eigen::VectorXd &q) {
   pinocchio::framesForwardKinematics(*model_, *data_, q);
-  const pinocchio::SE3 in_current_gripper_M_des_gripper = data_->oMf[ee_frame_id_].actInv(des_in_world_M_gripper_);
+  const pinocchio::SE3 in_current_gripper_M_des_gripper = data_->oMf[gripper_frame_id_].actInv(des_in_world_M_gripper_);
   Eigen::Matrix<double, 6, 1> error = error_weights_ * pinocchio::log6(in_current_gripper_M_des_gripper).toVector();
   score_ = error.norm();
 }
 
 Individual Individual::cross(const Individual &other_indiv) const {
   Eigen::VectorXd cross_q = (q_ + other_indiv.get_q()) / 2.0;
-  return Individual(cross_q, model_, data_, ee_frame_id_, des_in_world_M_gripper_, mutation_amplitude_, error_weights_,
-                    convergence_threshold_);
+  return Individual(cross_q, model_, data_, gripper_frame_id_, des_in_world_M_gripper_, mutation_amplitude_,
+                    error_weights_, convergence_threshold_);
 }
 
 void Individual::mutate() {
@@ -72,8 +72,8 @@ GeneticAlgoInverseKin::initialize_population(const pinocchio::SE3 &des_in_world_
           model_->lowerPositionLimit[joint_idx] +
           get_rand_value_0_to_1() * (model_->upperPositionLimit[joint_idx] - model_->lowerPositionLimit[joint_idx]);
 
-    population.push_back(Individual(random_q, model_, data_, ee_frame_id_, des_in_world_M_gripper, mutation_amplitude_,
-                                    error_weights_, convergence_threshold_));
+    population.push_back(Individual(random_q, model_, data_, gripper_frame_id_, des_in_world_M_gripper,
+                                    mutation_amplitude_, error_weights_, convergence_threshold_));
   }
 
   std::sort(population.begin(), population.end(),

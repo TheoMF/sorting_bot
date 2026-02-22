@@ -4,27 +4,26 @@ namespace sorting_bot {
 
 void PlannerManager::initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer,
                                 const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster,
-                                const std::string &urdf, joint_trajectory_publisher::Params &params) {
+                                const std::string &urdf, Params &full_set_params) {
   // Set tf attributes.
   tf_buffer_ = tf_buffer;
   tf_broadcaster_ = tf_broadcaster;
 
   // Initialize other attributes from ROS parameters.
-  initialize_basic_attributes(params);
-  initialize_eigen_attributes(params);
-  build_frame_maps_from_params(params);
-  motion_planner.initialize(urdf, params);
+  build_frame_maps_from_params(full_set_params);
+  build_base_waypoint_vec_from_params(full_set_params);
+  initialize_basic_attributes(full_set_params.common, full_set_params.planner_manager);
+  initialize_eigen_attributes(full_set_params.planner_manager);
+  motion_planner.initialize(urdf, full_set_params.common.robot_name, full_set_params.planner_manager.motion_planner);
 }
 
-void PlannerManager::initialize_basic_attributes(joint_trajectory_publisher::Params &params) {
-  nq_ = params.nq;
-  objects_frame_ = params.objects_frame;
-  box_frames_ = params.box_frames;
+void PlannerManager::initialize_basic_attributes(CommonParams &common_params, PlannerManagerParams &params) {
+  world_frame_ = common_params.world_frame;
+  base_frame_ = common_params.base_frame;
+  robot_name_ = common_params.robot_name;
+  nq_ = common_params.nq;
+  state_update_period_ = 1.0 / common_params.rate;
   joints_des_precision_ = params.joints_des_precision;
-  robot_name_ = params.robot_name;
-  world_frame_ = params.world_frame;
-  base_frame_ = params.base_frame;
-  ee_frame_name_ = params.ee_frame_name;
   open_gripper_position_ = params.open_gripper_position;
   closed_gripper_position_ = params.closed_gripper_position;
   box_dist_while_placing_ = params.box_dist_while_placing;
@@ -33,14 +32,7 @@ void PlannerManager::initialize_basic_attributes(joint_trajectory_publisher::Par
   wait_duration_after_gripper_moved_ = params.wait_duration_after_gripper_moved;
 }
 
-void PlannerManager::initialize_eigen_attributes(joint_trajectory_publisher::Params &params) {
-  // Set base_waypoint_vec.
-  for (std::string &base_waypoint_name : params.base_waypoint_names) {
-    std::vector<double> base_waypoint_vec = params.base_waypoint_names_map.at(base_waypoint_name).base_waypoint;
-    Eigen::Vector3d base_waypoint = Eigen::Map<Eigen::Vector3d>(base_waypoint_vec.data(), base_waypoint_vec.size());
-    base_waypoint_vec_.push_back(base_waypoint);
-  }
-
+void PlannerManager::initialize_eigen_attributes(PlannerManagerParams &params) {
   // Set qs_searching_objects.
   std::vector<std::vector<double>> qs_searching_objects = {params.q_searching_object, params.q_searching_object,
                                                            params.q_searching_object};
@@ -59,14 +51,12 @@ void PlannerManager::initialize_eigen_attributes(joint_trajectory_publisher::Par
   Eigen::Vector3d in_world_translation_world_to_box =
       Eigen::Vector3d(params.in_world_pose_box[0], params.in_world_pose_box[1], params.in_world_pose_box[2]);
   in_world_M_box_ = pinocchio::SE3(in_world_rot_box_quat.toRotationMatrix(), in_world_translation_world_to_box);
-
   // Set remaining attributes requiring switch to Eigen containers.
   in_grasp_translation_grasp_to_pre_grasp_ = Eigen::Map<Eigen::Vector3d>(
       params.in_grasp_translation_grasp_to_pre_grasp.data(), params.in_grasp_translation_grasp_to_pre_grasp.size());
   in_base_translation_gripper_to_pre_placing_ =
       Eigen::Map<Eigen::Vector3d>(params.in_base_translation_gripper_to_pre_placing.data(),
                                   params.in_base_translation_gripper_to_pre_placing.size());
-  state_update_period_ = 1.0 / params.rate;
   in_world_rot_top_grasp_quat_ =
       Eigen::Quaterniond(params.in_world_rot_top_grasp_quat[0], params.in_world_rot_top_grasp_quat[1],
                          params.in_world_rot_top_grasp_quat[2], params.in_world_rot_top_grasp_quat[3]);
@@ -91,25 +81,36 @@ void PlannerManager::initialize_in_box_M_compartment_map(const double &box_width
   }
 }
 
-void PlannerManager::build_frame_maps_from_params(joint_trajectory_publisher::Params &params) {
+void PlannerManager::build_frame_maps_from_params(Params &full_set_params) {
   // Set objects frame related maps.
-  for (std::string &object_frame : params.objects_frame) {
+  objects_frame_ = full_set_params.objects_frame;
+  for (std::string &object_frame : objects_frame_) {
     std::vector<double> in_grasp_translation_object_to_grasp_vec =
-        params.objects_frame_map.at(object_frame).in_grasp_translation_object_to_grasp;
+        full_set_params.objects_frame_map.at(object_frame).in_grasp_translation_object_to_grasp;
     Eigen::Vector3d in_grasp_translation_object_to_grasp = Eigen::Map<Eigen::Vector3d>(
         in_grasp_translation_object_to_grasp_vec.data(), in_grasp_translation_object_to_grasp_vec.size());
     in_grasp_translation_object_to_grasp_map_[object_frame] = in_grasp_translation_object_to_grasp;
-    objects_to_grasp_from_top_map_[object_frame] = params.objects_frame_map.at(object_frame).grasp_from_top;
+    objects_to_grasp_from_top_map_[object_frame] = full_set_params.objects_frame_map.at(object_frame).grasp_from_top;
   }
 
   // Set box frames translation map.
-  for (std::string &box_frame : params.box_frames) {
+  box_frames_ = full_set_params.box_frames;
+  for (std::string &box_frame : box_frames_) {
     std::vector<double> in_box_frame_translation_box_frame_to_box_center_vec =
-        params.box_frames_map.at(box_frame).in_box_frame_translation_box_frame_to_box_center;
+        full_set_params.box_frames_map.at(box_frame).in_box_frame_translation_box_frame_to_box_center;
     Eigen::Vector3d in_box_frame_translation_box_frame_to_box_center =
         Eigen::Map<Eigen::Vector3d>(in_box_frame_translation_box_frame_to_box_center_vec.data(),
                                     in_box_frame_translation_box_frame_to_box_center_vec.size());
     in_box_frame_translation_box_frame_to_box_center_map_[box_frame] = in_box_frame_translation_box_frame_to_box_center;
+  }
+}
+
+void PlannerManager::build_base_waypoint_vec_from_params(Params &full_set_params) {
+  for (std::string &base_waypoint_name : full_set_params.base_waypoint_names) {
+    std::vector<double> base_waypoint_vec =
+        full_set_params.base_waypoint_names_map.at(base_waypoint_name).base_waypoint;
+    Eigen::Vector3d base_waypoint = Eigen::Map<Eigen::Vector3d>(base_waypoint_vec.data(), base_waypoint_vec.size());
+    base_waypoint_vec_.push_back(base_waypoint);
   }
 }
 
@@ -415,7 +416,7 @@ void PlannerManager::set_object_search_to_next_location() {
 
 std::vector<Eigen::VectorXd> PlannerManager::get_going_above_object_pose_q_waypoints() const {
   // Evaluate current yaw angle of gripper with respect to world frame.
-  pinocchio::SE3 current_in_base_M_gripper = motion_planner.get_in_base_M_gripper_at_q(current_q_, ee_frame_name_);
+  pinocchio::SE3 current_in_base_M_gripper = motion_planner.get_in_base_M_gripper_at_q(current_q_);
   double current_gripper_yaw_angle =
       std::atan2(current_in_base_M_gripper.translation()[1], current_in_base_M_gripper.translation()[0]);
 
@@ -463,7 +464,7 @@ std::vector<Eigen::VectorXd> PlannerManager::get_grasping_q_waypoints() const {
 
 std::vector<Eigen::VectorXd> PlannerManager::get_placing_q_waypoints() const {
   // Compute pre-placing configuration.
-  pinocchio::SE3 in_base_M_gripper = motion_planner.get_in_base_M_gripper_at_q(current_q_, ee_frame_name_);
+  pinocchio::SE3 in_base_M_gripper = motion_planner.get_in_base_M_gripper_at_q(current_q_);
   pinocchio::SE3 in_base_M_pre_placing = pinocchio::SE3(
       in_base_M_gripper.rotation(), in_base_M_gripper.translation() + in_base_translation_gripper_to_pre_placing_);
   std::optional<Eigen::VectorXd> q_pre_placing =

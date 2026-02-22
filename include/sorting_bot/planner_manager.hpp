@@ -47,20 +47,26 @@ inline std::string get_state_as_string(const StateMachine &state) {
 
 class PlannerManager {
 public:
+  using Params = joint_trajectory_publisher::Params;
+  using PlannerManagerParams = joint_trajectory_publisher::Params::PlannerManager;
+  using CommonParams = joint_trajectory_publisher::Params::Common;
+
   PlannerManager() {}
 
   void initialize(const std::shared_ptr<tf2_ros::Buffer> &tf_buffer,
                   const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster, const std::string &urdf,
-                  joint_trajectory_publisher::Params &params);
+                  Params &full_set_params);
 
-  void initialize_basic_attributes(joint_trajectory_publisher::Params &params);
+  void initialize_basic_attributes(CommonParams &common_params, PlannerManagerParams &params);
 
-  void initialize_eigen_attributes(joint_trajectory_publisher::Params &params);
+  void initialize_eigen_attributes(PlannerManagerParams &params);
 
   void initialize_in_box_M_compartment_map(const double &box_width, const double &box_length,
                                            const double &object_height_while_placing_in_box);
 
-  void build_frame_maps_from_params(joint_trajectory_publisher::Params &params);
+  void build_frame_maps_from_params(Params &full_set_params);
+
+  void build_base_waypoint_vec_from_params(Params &full_set_params);
 
   pinocchio::SE3 get_in_parent_M_child(const std::string &parent_frame, const std::string &child_frame,
                                        const rclcpp::Time &time) const;
@@ -131,7 +137,7 @@ private:
   rclcpp::Logger logger_ = rclcpp::get_logger("joint_trajectory_publisher");
 
   // Perception related attributes.
-  std::string world_frame_, base_frame_, ee_frame_name_;
+  std::string world_frame_, base_frame_;
   std::vector<std::string> objects_frame_, box_frames_;
   Detection object_detection_to_sort_;
   std::mutex detection_map_mutex_;

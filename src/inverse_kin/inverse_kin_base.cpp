@@ -7,7 +7,7 @@ void InverseKinBase::initialize(const std::shared_ptr<pinocchio::Model> &model,
                                 InverseKinBaseParams &params) {
   model_ = model;
   data_ = data;
-  ee_frame_id_ = ee_frame_id;
+  gripper_frame_id_ = ee_frame_id;
   nq_ = model_->nq;
   convergence_threshold_ = params.convergence_threshold;
   error_weights_ = Eigen::Matrix<double, 6, 6>::Identity();
@@ -20,7 +20,7 @@ void InverseKinBase::initialize(const std::shared_ptr<pinocchio::Model> &model,
                                 const Eigen::Matrix<double, 6, 6> &error_weights, const double &convergence_threshold) {
   model_ = model;
   data_ = data;
-  ee_frame_id_ = ee_frame_id;
+  gripper_frame_id_ = ee_frame_id;
   nq_ = model_->nq;
   error_weights_ = error_weights;
   convergence_threshold_ = convergence_threshold;

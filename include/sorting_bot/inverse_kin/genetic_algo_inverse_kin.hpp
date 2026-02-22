@@ -13,8 +13,6 @@ inline double get_rand_value_0_to_1() {
   return unif_distrib(rand_engine);
 }
 
-using GeneticAlgoInverseKinParams = joint_trajectory_publisher::Params::GeneticAlgoInverseKin;
-
 class Individual : public InverseKinBase {
 public:
   Individual(const Eigen::VectorXd &q, const std::shared_ptr<pinocchio::Model> &model,
@@ -40,6 +38,9 @@ private:
 
 class GeneticAlgoInverseKin : public InverseKinBase {
 public:
+  using GeneticAlgoInverseKinParams =
+      joint_trajectory_publisher::Params::PlannerManager::MotionPlanner::GeneticAlgoInverseKin;
+
   GeneticAlgoInverseKin();
 
   void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,

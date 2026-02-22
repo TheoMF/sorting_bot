@@ -1,30 +1,84 @@
 ---
 joint_trajectory_publisher:
   ros__parameters:
-    robot_name: "SO-101"
+    # Node parameters
     joint_trajectory_topic: "/so_100_arm_controller/joint_trajectory"
     gripper_command_topic: "/so_100_arm_gripper_controller/commands"
-    objects_frame: ["glass", "cardboard", "metal", "plastic"]
-    rate: 100.0
-    use_genetic_algo: false
-    motion_planning_time_coeff: 2.3
-    box_dist_while_placing : 0.25
-    integration_coeff: 0.0
-    des_precision : 0.02
+    integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
+    integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
     joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    friction_compensation: [0.01,0.01,0.05,0.0,0.0]
-    in_object_translation_grasp : [0.027, 0.03, 0.01]
-    q_base_moving : [-0.142660, -1.814699, 1.656699, 0.225495, 1.262466]
-    inverse_kin:
-      eps: 0.001
-      max_iter: 1000
-      dt: 0.1
-      damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.05, 0.01, 1.0]
-    genetic_algo_inverse_kin:
-      population_size: 3000
-      max_iter: 30
-      nb_keep_ind: 400
-      eps: 0.001
-      mutation_max_amplitude: 0.1
+    friction_compensation: [0.01,0.01,0.01,0.0,0.0]
+    hand_camera_frame: "camera"
+
+    # Parameters with map
+    objects_frame: ["plastic","glass","cardboard", "metal"]
+    glass:
+      in_grasp_translation_object_to_grasp: [0.038, 0.033, 0.03]
+      grasp_from_top: false
+    cardboard:
+      in_grasp_translation_object_to_grasp: [0.04, 0.025, 0.02]
+      grasp_from_top: false
+    metal:
+      in_grasp_translation_object_to_grasp: [0.04, -0.03, 0.021]
+      grasp_from_top: true
+    plastic:
+      in_grasp_translation_object_to_grasp: [0.045, 0.025, 0.025]
+      grasp_from_top: false
+    box_frames: ["box_center", "box_left", "box_right"]
+    box_center:
+      in_box_frame_translation_box_frame_to_box_center: [0.0, 0.0, 0.0]
+    box_left:
+      in_box_frame_translation_box_frame_to_box_center: [0.071, 0.0, 0.0]
+    box_right:
+      in_box_frame_translation_box_frame_to_box_center: [-0.064, 0.0, 0.0]
+
+    # Common parameters used by both Joint Trajectory Publisher and Planner Manager   
+    common:
+      rate: 100.0
+      nq: 5
+      robot_name: "SO-101"
+      world_frame: "base_link"
+      base_frame: "base_link"
+
+    # Planner Manager parameters
+    planner_manager:
+      # Perception parameters
+      in_world_pose_box: [-0.25, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+      # Motion planning parameters
+      box_width: 0.2
+      box_length: 0.325
+      object_height_while_placing_in_box: 0.18
+      wait_duration_before_vision_action: 2.0
+      wait_duration_after_gripper_moved: 0.7
+      closed_gripper_position: 0.2
+      open_gripper_position: 1.5
+      joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
+      q_searching_object: [0.06266021327336462, -0.6611457195787114, 0.19481556006147643, 1.555437137583913, 1.3299613430968509]
+      in_grasp_translation_grasp_to_pre_grasp: [0.0, -0.06, -0.01]
+      in_base_translation_gripper_to_pre_placing: [0.0, 0.0, 0.04]
+      in_world_rot_top_grasp_quat: [0.0136498, -0.624938, 0.780508, -0.00855614]
+      in_world_rot_front_grasp_quat: [0.466896, -0.53408, 0.634467, -0.30695]
+      q0_shift_q_searching_object : 0.8
+
+      # Motion Planner parameters 
+      motion_planner:
+        use_genetic_algo: false
+        motion_planning_time_coeff: 1.6
+        gripper_frame : "gripper_frame_link"
+
+        # Inverse kinematics parameters
+        ik_min_precision_threshold: 0.1
+        inverse_kin_base:
+          error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
+          convergence_threshold: 0.01
+        inverse_kin:
+          max_iter: 1000
+          dt: 0.1
+          damp: 0.000001
+        genetic_algo_inverse_kin:
+          population_size: 3000
+          max_iter: 30
+          nb_keep_ind: 400
+          mutation_amplitude: 0.1
 

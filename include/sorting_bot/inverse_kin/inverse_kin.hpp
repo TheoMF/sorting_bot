@@ -5,11 +5,10 @@
 
 namespace sorting_bot {
 
-using InverseKinParams = joint_trajectory_publisher::Params::InverseKin;
-
 class InverseKin : public InverseKinBase {
-
 public:
+  using InverseKinParams = joint_trajectory_publisher::Params::PlannerManager::MotionPlanner::InverseKin;
+
   InverseKin();
 
   void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,

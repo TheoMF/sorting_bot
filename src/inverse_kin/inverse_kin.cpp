@@ -30,13 +30,14 @@ InverseKin::get_inverse_kinematics(Eigen::VectorXd q_init, const pinocchio::SE3 
   for (int iter = 0; iter < max_iter_; iter++) {
     // Compute current error.
     pinocchio::framesForwardKinematics(*model_, *data_, q);
-    const pinocchio::SE3 in_current_gripper_M_des_gripper = data_->oMf[ee_frame_id_].actInv(in_world_M_des_pose);
+    const pinocchio::SE3 in_current_gripper_M_des_gripper = data_->oMf[gripper_frame_id_].actInv(in_world_M_des_pose);
     error = error_weights_ * pinocchio::log6(in_current_gripper_M_des_gripper).toVector();
     if (error.norm() < convergence_threshold_)
       break;
 
     // Compute inverse kinematics using the jacobian matrix.
-    pinocchio::computeFrameJacobian(*model_, *data_, q, ee_frame_id_, pinocchio::ReferenceFrame::LOCAL, frame_jacobian);
+    pinocchio::computeFrameJacobian(*model_, *data_, q, gripper_frame_id_, pinocchio::ReferenceFrame::LOCAL,
+                                    frame_jacobian);
     pinocchio::Jlog6(in_current_gripper_M_des_gripper.inverse(), task_jacobian_log);
     task_jacobian = -task_jacobian_log * frame_jacobian;
     gramian_matrix.noalias() = task_jacobian * task_jacobian.transpose();

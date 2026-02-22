@@ -1,10 +1,26 @@
 ---
 joint_trajectory_publisher:
   ros__parameters:
-    robot_name: "LeKiwi"
+    # Node parameters
     joint_trajectory_topic: "/lekiwi_controller/joint_trajectory"
     gripper_command_topic: "/lekiwi_gripper_controller/joint_trajectory"
-    ee_frame_name : "gripper_frame_link"
+    integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
+    integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
+    joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    friction_compensation: [0.01,0.01,0.01,0.0,0.0]
+    hand_camera_frame: "camera"
+    base_camera_frame: "base_camera"
+
+    # Parameters with map
+    base_waypoint_names: ["waypoint_1", "waypoint_2", "waypoint_3", "waypoint_4"]
+    waypoint_1:
+      base_waypoint: [0.25, 0.0, 0.0]
+    waypoint_2:
+      base_waypoint: [1.0, 0.0, 0.0]
+    waypoint_3:
+      base_waypoint: [1.0, -0.75, -1.5707963267]
+    waypoint_4:
+      base_waypoint: [0.25, -0.75, 3.1415926535] 
     objects_frame: ["plastic","glass","cardboard", "metal"]
     glass:
       in_grasp_translation_object_to_grasp: [0.038, 0.033, 0.03]
@@ -25,49 +41,59 @@ joint_trajectory_publisher:
       in_box_frame_translation_box_frame_to_box_center: [0.071, 0.0, 0.0]
     box_right:
       in_box_frame_translation_box_frame_to_box_center: [-0.064, 0.0, 0.0]
-    world_frame: "odom"
-    base_frame: "base_footprint"
-    hand_camera_frame: "camera"
-    base_camera_frame: "base_camera"
-    rate: 100.0
-    nq: 5
-    use_genetic_algo: false
-    motion_planning_time_coeff: 1.6
-    wait_duration_before_vision_action: 2.0
-    box_dist_while_placing : 0.27
-    box_width: 0.2
-    box_length: 0.325
-    base_waypoint_names: ["waypoint_1", "waypoint_2", "waypoint_3", "waypoint_4"]
-    waypoint_1:
-      base_waypoint: [0.25, 0.0, 0.0]
-    waypoint_2:
-      base_waypoint: [1.0, 0.0, 0.0]
-    waypoint_3:
-      base_waypoint: [1.0, -0.75, -1.5707963267]
-    waypoint_4:
-      base_waypoint: [0.25, -0.75, 3.1415926535]
-    integration_coeffs_during_traj: [0.1, 0.1, 0.35, 0.1, 0.1]
-    integration_coeffs_after_traj: [1.5, 1.8, 1.8, 1.7, 1.7]
-    joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
-    joint_names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    friction_compensation: [0.0,0.0,0.0,0.0,0.0]
-    in_world_rot_top_grasp_quat: [0.0136498, -0.624938, 0.780508, -0.00855614]
-    in_world_rot_front_grasp_quat: [0.466896, -0.53408, 0.634467, -0.30695]
-    q_base_moving : [0.062660, -1.704699, 1.628466, 0.355495, 1.322466]
-    q_searching_object: [0.06266021327336462, -0.6611457195787114, 0.19481556006147643, 1.555437137583913, 1.3299613430968509]
-    in_grasp_translation_grasp_to_pre_grasp: [0.0, -0.06, -0.01]
-    in_base_translation_gripper_to_pre_placing: [0.0, 0.0, 0.04]
-    q0_shift_q_searching_object : 0.8
-    inverse_kin_base:
-      error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
-      convergence_threshold: 0.01
-    inverse_kin:
-      max_iter: 1000
-      dt: 0.1
-      damp: 0.000001
-    genetic_algo_inverse_kin:
-      population_size: 3000
-      max_iter: 30
-      nb_keep_ind: 400
-      mutation_amplitude: 0.1
+
+    # Common parameters used by both Joint Trajectory Publisher and Planner Manager   
+    common:
+      rate: 100.0
+      nq: 5
+      robot_name: "LeKiwi"
+      world_frame: "odom"
+      base_frame: "base_footprint"
+
+    # Planner Manager parameters
+    planner_manager:
+      # Perception parameters
+      in_world_pose_box: [-0.25, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+      # Navigation parameters
+      box_dist_while_placing : 0.27
+      search_box_y_dist_threshold : 0.15
+
+      # Motion planning parameters
+      box_width: 0.2
+      box_length: 0.325
+      object_height_while_placing_in_box: 0.18
+      wait_duration_before_vision_action: 2.0
+      wait_duration_after_gripper_moved: 0.7
+      closed_gripper_position: 0.2
+      open_gripper_position: 1.5
+      joints_des_precision : [0.02, 0.02, 0.02, 0.02, 0.02]
+      q_base_moving : [0.062660, -1.704699, 1.628466, 0.355495, 1.322466]
+      q_searching_object: [0.06266021327336462, -0.6611457195787114, 0.19481556006147643, 1.555437137583913, 1.3299613430968509]
+      in_grasp_translation_grasp_to_pre_grasp: [0.0, -0.06, -0.01]
+      in_base_translation_gripper_to_pre_placing: [0.0, 0.0, 0.04]
+      in_world_rot_top_grasp_quat: [0.0136498, -0.624938, 0.780508, -0.00855614]
+      in_world_rot_front_grasp_quat: [0.466896, -0.53408, 0.634467, -0.30695]
+      q0_shift_q_searching_object : 0.8
+
+      # Motion Planner parameters 
+      motion_planner:
+        use_genetic_algo: false
+        motion_planning_time_coeff: 1.6
+        gripper_frame : "gripper_frame_link"
+
+        # Inverse kinematics parameters
+        ik_min_precision_threshold: 0.1
+        inverse_kin_base:
+          error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
+          convergence_threshold: 0.01
+        inverse_kin:
+          max_iter: 1000
+          dt: 0.1
+          damp: 0.000001
+        genetic_algo_inverse_kin:
+          population_size: 3000
+          max_iter: 30
+          nb_keep_ind: 400
+          mutation_amplitude: 0.1
 

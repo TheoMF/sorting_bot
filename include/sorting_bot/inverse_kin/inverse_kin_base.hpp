@@ -7,10 +7,10 @@
 
 namespace sorting_bot {
 
-using InverseKinBaseParams = joint_trajectory_publisher::Params::InverseKinBase;
-
 class InverseKinBase {
 public:
+  using InverseKinBaseParams = joint_trajectory_publisher::Params::PlannerManager::MotionPlanner::InverseKinBase;
+
   void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,
                   const int &ee_frame_id, InverseKinBaseParams &params);
 
@@ -24,7 +24,7 @@ protected:
   // Pinocchio model attributes
   std::shared_ptr<pinocchio::Model> model_;
   std::shared_ptr<pinocchio::Data> data_;
-  int ee_frame_id_;
+  int gripper_frame_id_;
   int nq_;
 
   Eigen::Matrix<double, 6, 6> error_weights_; // square matrix with weights in the diagonal

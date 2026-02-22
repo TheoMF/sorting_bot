@@ -1,8 +1,5 @@
 joint_trajectory_publisher:
-  robot_name:
-    type: string
-    default_value: "SO-101"
-    description: "Name of the robot."
+  # Node parameters
   joint_trajectory_topic:
     type: string
     default_value: "/so_100_arm_controller/joint_trajectory"
@@ -11,10 +8,55 @@ joint_trajectory_publisher:
     type: string
     default_value: "/so_100_arm_gripper_controller/commands"
     description: "Topic on which we publish gripper angle commands."
-  ee_frame_name:
+  integration_coeffs_after_traj:
+    type: double_array
+    description: "Integration coefficients for position used after the end of a trajectory."
+    validation:
+        not_empty<>: []
+  integration_coeffs_during_traj:
+    type: double_array
+    description: "Integration coefficients for position used while tracking trajectory."
+    validation:
+        not_empty<>: []
+  joint_names:
+    type: string_array
+    default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    description: "Joint names of the robot."
+  friction_compensation:
+    type: double_array
+    description: "Compensation used in position reference for friction."
+    validation:
+      not_empty<>: []
+  hand_camera_frame:
+      type: string
+      default_value: "hand_camera"
+      description: "Name of the hand camera frame."
+  base_camera_frame:
     type: string
-    default_value: "gripper_frame_link"
-    description: "Frame name of the end-effector."
+    default_value: "base_camera"
+    description: "Name of the base camera frame."
+
+  # Parameters with map
+  base_waypoint_names:
+      type: string_array
+      default_value: ["waypoint_1", "waypoint_2", "waypoint_3", "waypoint_4"]
+      description: "Name of each base waypoint."
+  __map_base_waypoint_names:
+    base_waypoint:
+      type: double_array
+      description: "base waypoint pose."
+      validation:
+        not_empty<>: []
+  box_frames:
+    type: string_array
+    default_value: ["box_center", "box_left", "box_right"]
+    description: "Frame name of the box tags in tf."
+  __map_box_frames:
+    in_box_frame_translation_box_frame_to_box_center:
+      type: double_array
+      description: "Translation from box frame to center of the box frame."
+      validation:
+        not_empty<>: []
   objects_frame:
     type: string_array
     default_value: ["glass", "cardboard", "metal", "plastic"]
@@ -29,197 +71,174 @@ joint_trajectory_publisher:
       type: bool
       default_value: false
       description: "Wether to grasp the object from the top or from the side."
-  box_frames:
-    type: string_array
-    default_value: ["box_center", "box_left", "box_right"]
-    description: "Frame name of the box tags in tf."
-  __map_box_frames:
-    in_box_frame_translation_box_frame_to_box_center:
+
+  # Common parameters used by both Joint Trajectory Publisher and Planner Manager
+  common:
+    rate:
+      type: double
+      default_value: 100.0
+      description: "Rate of node in hertz."
+    nq:
+      type: int
+      default_value: 5
+      description: "Number of joints in the configuration vector."
+    robot_name:
+      type: string
+      default_value: "SO-101"
+      description: "Name of the robot."
+    world_frame:
+      type: string
+      default_value: "odom"
+      description: "Name of the world frame."
+    base_frame:
+      type: string
+      default_value: "base_footprint"
+      description: "Name of the base link frame."
+
+  # Planner Manager parameters
+  planner_manager:
+    # Perception parameters
+    in_world_pose_box :
       type: double_array
-      description: "Translation from box frame to center of the box frame."
+      default_value: [-0.25, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+      description: "Position of the box in world frame."
+
+    # Navigation parameters
+    box_dist_while_placing :
+      type: double
+      default_value: 0.25
+      description: "Ideal distance to the box while placing an object in it."
+    search_box_y_dist_threshold :
+      type: double
+      default_value: 0.15
+      description: "Y distance threshold to last known box pose to trigger xy navigation."
+
+    # Motion planning parameters
+    box_width :
+      type: double
+      default_value: 0.25
+      description: "Width of the box in meters."
+    box_length :
+      type: double
+      default_value: 0.315
+      description: "Length of the box in meters."
+    object_height_while_placing_in_box:
+      type: double
+      default_value: 0.18
+      description: "Desired height for the object when placing it inside the box."
+    wait_duration_before_vision_action:
+      type: double
+      default_value: 1.5
+      description: "Wait duration to perform before looking for an object detection in tf."
+    wait_duration_after_gripper_moved:
+      type: double
+      default_value: 0.7
+      description: "Optional wait duration after we moved the gripper, handy for good grasping/placing."
+    closed_gripper_position:
+      type: double
+      default_value: -0.5
+      description: "Gripper position when closed."
+    open_gripper_position:
+      type: double
+      default_value: 1.0
+      description: "Gripper position when open."
+    joints_des_precision:
+      type: double_array
+      description: "Desired precision for goal joints position."
+      validation:
+          not_empty<>: []
+    q_base_moving:
+      type: double_array
+      description: "Configuration while base is moving."
       validation:
         not_empty<>: []
-  world_frame:
-    type: string
-    default_value: "odom"
-    description: "Name of the world frame."
-  base_frame:
-    type: string
-    default_value: "base_footprint"
-    description: "Name of the base link frame."
-  hand_camera_frame:
-    type: string
-    default_value: "hand_camera"
-    description: "Name of the hand camera frame."
-  base_camera_frame:
-    type: string
-    default_value: "base_camera"
-    description: "Name of the base camera frame."
-  rate:
-    type: double
-    default_value: 100.0
-    description: "Rate of node in hertz."
-  nq:
-    type: int
-    default_value: 5
-    description: "Number of joints in the configuration vector."
-  use_genetic_algo:
-    type: bool
-    default_value: true
-    description: "Wether or not we use genetic algorithm if IK didn't converge."
-  motion_planning_time_coeff:
-    type: double
-    default_value: 1.0
-    description: "Coefficient for the total length of motion planning time."
-  in_world_pose_box :
-    type: double_array
-    default_value: [-0.25, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-    description: "Position of the box in world frame."
-  box_dist_while_placing :
-    type: double
-    default_value: 0.25
-    description: "Ideal distance to the box while placing an object in it."
-  search_box_y_dist_threshold :
-    type: double
-    default_value: 0.15
-    description: "Y distance threshold to last known box pose to trigger xy navigation."
-  box_width :
-    type: double
-    default_value: 0.25
-    description: "Width of the box in meters."
-  box_length :
-    type: double
-    default_value: 0.315
-    description: "Length of the box in meters."
-  base_waypoint_names:
-    type: string_array
-    default_value: ["waypoint_1", "waypoint_2", "waypoint_3", "waypoint_4"]
-    description: "Name of each base waypoint."
-  __map_base_waypoint_names:
-    base_waypoint:
+    q_searching_object:
       type: double_array
-      description: "base waypoint pose."
+      description: "Configuration for searching objects."
       validation:
         not_empty<>: []
-  object_height_while_placing_in_box:
-    type: double
-    default_value: 0.18
-    description: "Desired height for the object when placing it inside the box."
-  wait_duration_before_vision_action:
-    type: double
-    default_value: 1.5
-    description: "Wait duration to perform before looking for an object detection in tf."
-  wait_duration_after_gripper_moved:
-    type: double
-    default_value: 0.7
-    description: "Optional wait duration after we moved the gripper, handy for good grasping/placing."
-  integration_coeffs_after_traj:
-    type: double_array
-    description: "Integration coefficients for position used after the end of a trajectory."
-    validation:
-        not_empty<>: []
-  integration_coeffs_during_traj:
-    type: double_array
-    description: "Integration coefficients for position used while tracking trajectory."
-    validation:
-        not_empty<>: []
-  joints_des_precision:
-    type: double_array
-    description: "Desired precision for goal joints position."
-    validation:
-        not_empty<>: []
-  joint_names:
-    type: string_array
-    default_value: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-    description: "Joint names of the robot."
-  friction_compensation:
-    type: double_array
-    description: "Compensation used in position reference for friction."
-    validation:
-      not_empty<>: []
-  closed_gripper_position:
-    type: double
-    default_value: -0.5
-    description: "Gripper position when closed."
-  open_gripper_position:
-    type: double
-    default_value: 1.0
-    description: "Gripper position when open."
-  q_base_moving:
-    type: double_array
-    description: "Configuration while base is moving."
-    validation:
-      not_empty<>: []
-  q_searching_object:
-    type: double_array
-    description: "Configuration for searching objects."
-    validation:
-      not_empty<>: []
-  in_grasp_translation_grasp_to_pre_grasp:
-    type: double_array
-    description: "Translation from grasp frame to pre-grasp frame."
-    validation:
-      not_empty<>: []
-  in_base_translation_gripper_to_pre_placing:
-    type: double_array
-    description: "Translation from gripper frame to pre-placing frame."
-    validation:
-      not_empty<>: []
-  in_world_rot_top_grasp_quat:
-    type: double_array
-    description: "Rotation between world frame and gripper desired frame while grasping from top."
-    validation:
-      not_empty<>: []
-  in_world_rot_front_grasp_quat:
-    type: double_array
-    description: "Rotation between world frame and gripper desired frame while grasping from front."
-    validation:
-      not_empty<>: []
-  q0_shift_q_searching_object:
-      type: double
-      default_value: 0.8
-      description: "Shift on q0 to create new configurations for searching objects."
-  min_precision_threshold:
-      type: double
-      default_value: 0.1
-      description: "norm precision threshold to decide if IK result is acceptable."
-  inverse_kin_base:
-    convergence_threshold:
-      type: double
-      default_value: 0.01
-      description: "Desired norm precision to consider that IK converged."
-    error_weights:
+    in_grasp_translation_grasp_to_pre_grasp:
       type: double_array
-      description: Weights for the error vector.
+      description: "Translation from grasp frame to pre-grasp frame."
       validation:
         not_empty<>: []
-  inverse_kin:
-    dt:
-      type: double
-      default_value: 0.1
-      description: "Integration step."
-    damp:
-      type: double
-      default_value: 0.000001
-      description: "Dampener coefficient."
-    max_iter:
-      type: int
-      default_value: 10000
-      description: "Maximum number of iteration."
-  genetic_algo_inverse_kin:
-    population_size:
-      type: int
-      default_value: 3000
-      description: "Size of the population."
-    nb_keep_ind:
-      type: int
-      default_value: 400
-      description: "Number of individuals we keep for next iteration."
-    mutation_amplitude:
-      type: double
-      default_value: 0.1
-      description: "Amplitude for the mutation."
-    max_iter:
-      type: int
-      default_value: 10
-      description: "Maximum number of iteration while having the same best individual."
+    in_base_translation_gripper_to_pre_placing:
+      type: double_array
+      description: "Translation from gripper frame to pre-placing frame."
+      validation:
+        not_empty<>: []
+    in_world_rot_top_grasp_quat:
+      type: double_array
+      description: "Rotation between world frame and gripper desired frame while grasping from top."
+      validation:
+        not_empty<>: []
+    in_world_rot_front_grasp_quat:
+      type: double_array
+      description: "Rotation between world frame and gripper desired frame while grasping from front."
+      validation:
+        not_empty<>: []
+    q0_shift_q_searching_object:
+        type: double
+        default_value: 0.8
+        description: "Shift on q0 to create new configurations for searching objects."
+
+    # Motion Planner parameters 
+    motion_planner:
+      use_genetic_algo:
+        type: bool
+        default_value: true
+        description: "Wether or not we use genetic algorithm if IK didn't converge."
+      motion_planning_time_coeff:
+        type: double
+        default_value: 1.0
+        description: "Coefficient for the total length of motion planning time."
+      gripper_frame:
+        type: string
+        default_value: "gripper_frame_link"
+        description: "Frame name of the gripper."
+
+      # Inverse kinematics parameters
+      ik_min_precision_threshold:
+        type: double
+        default_value: 0.1
+        description: "norm precision threshold to decide if IK result is acceptable."
+      inverse_kin_base:
+        convergence_threshold:
+          type: double
+          default_value: 0.01
+          description: "Desired norm precision to consider that IK converged."
+        error_weights:
+          type: double_array
+          description: Weights for the error vector.
+          validation:
+            not_empty<>: []
+      inverse_kin:
+        dt:
+          type: double
+          default_value: 0.1
+          description: "Integration step."
+        damp:
+          type: double
+          default_value: 0.000001
+          description: "Dampener coefficient."
+        max_iter:
+          type: int
+          default_value: 10000
+          description: "Maximum number of iteration."
+      genetic_algo_inverse_kin:
+        population_size:
+          type: int
+          default_value: 3000
+          description: "Size of the population."
+        nb_keep_ind:
+          type: int
+          default_value: 400
+          description: "Number of individuals we keep for next iteration."
+        mutation_amplitude:
+          type: double
+          default_value: 0.1
+          description: "Amplitude for the mutation."
+        max_iter:
+          type: int
+          default_value: 10
+          description: "Maximum number of iteration while having the same best individual."
