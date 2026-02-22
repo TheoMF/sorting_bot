@@ -58,16 +58,16 @@ joint_trajectory_publisher:
     in_grasp_translation_grasp_to_pre_grasp: [0.0, -0.06, -0.01]
     in_base_translation_gripper_to_pre_placing: [0.0, 0.0, 0.04]
     q0_shift_q_searching_object : 0.8
+    inverse_kin_base:
+      error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
+      convergence_threshold: 0.01
     inverse_kin:
-      eps: 0.001
       max_iter: 1000
       dt: 0.1
       damp: 0.000001
-      error_weights : [1.0, 1.0, 1.0, 0.15, 0.02, 1.0]
     genetic_algo_inverse_kin:
       population_size: 3000
       max_iter: 30
       nb_keep_ind: 400
-      eps: 0.001
-      mutation_max_amplitude: 0.1
+      mutation_amplitude: 0.1
 

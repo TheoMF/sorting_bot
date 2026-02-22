@@ -4,45 +4,57 @@
 #include <random>
 
 #include "sorting_bot/inverse_kin/inverse_kin_base.hpp"
-#include "sorting_bot/joint_trajectory_publisher_parameters.hpp"
 
 namespace sorting_bot {
 
+inline double get_rand_value_0_to_1() {
+  static std::uniform_real_distribution<double> unif_distrib(0.0, 1.0);
+  static std::default_random_engine rand_engine;
+  return unif_distrib(rand_engine);
+}
+
+using GeneticAlgoInverseKinParams = joint_trajectory_publisher::Params::GeneticAlgoInverseKin;
+
 class Individual : public InverseKinBase {
 public:
-  typedef Eigen::Matrix<double, 5, 1> Vector5d;
-  Individual(Eigen::VectorXd q, std::shared_ptr<pinocchio::Model> model, std::shared_ptr<pinocchio::Data> data,
-             const int &ee_frame_id, const pinocchio::SE3 &in_world_M_des_pose, const double &mutation_max_amplitude);
+  Individual(const Eigen::VectorXd &q, const std::shared_ptr<pinocchio::Model> &model,
+             const std::shared_ptr<pinocchio::Data> &data, const int &ee_frame_id,
+             const pinocchio::SE3 &des_in_world_M_gripper, const double &mutation_amplitude,
+             const Eigen::Matrix<double, 6, 6> &error_weights, const double &convergence_threshold);
 
-  Eigen::VectorXd q() const;
+  Eigen::VectorXd get_q() const;
 
   double score() const;
 
   void set_score(const Eigen::VectorXd &q);
 
-  Individual cross(const Individual &other_indiv);
+  Individual cross(const Individual &other_indiv) const;
+
   void mutate();
 
 private:
-  pinocchio::SE3 in_world_M_des_pose_;
+  pinocchio::SE3 des_in_world_M_gripper_;
   Eigen::VectorXd q_;
-  double score_, mutation_lower_bound_, mutation_upper_bound_;
+  double score_, mutation_amplitude_;
 };
 
 class GeneticAlgoInverseKin : public InverseKinBase {
 public:
   GeneticAlgoInverseKin();
 
-  void initialize(joint_trajectory_publisher::Params::GeneticAlgoInverseKin params);
+  void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,
+                  const int &ee_frame_id, InverseKinBaseParams &base_params, GeneticAlgoInverseKinParams &params);
 
-  std::vector<Individual> initialize_population(const pinocchio::SE3 &in_world_M_des_pose) const;
+  std::vector<Individual> initialize_population(const pinocchio::SE3 &des_in_world_M_gripper) const;
 
-  Individual run_gen_algo(const pinocchio::SE3 &in_world_M_des_pose) const;
+  std::pair<int, int> get_two_individuals_idx() const;
+
+  Individual run_gen_algo(const pinocchio::SE3 &des_in_world_M_gripper) const;
 
 private:
   // genetic algorithm parameters
   int population_size_, max_iter_, nb_keep_ind_;
-  double eps_, mutation_max_amplitude_;
+  double mutation_amplitude_;
 };
 
 } // namespace sorting_bot

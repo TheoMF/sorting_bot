@@ -3,13 +3,20 @@
 
 #include "pinocchio/algorithm/frames.hpp"
 #include "pinocchio/algorithm/model.hpp"
+#include "sorting_bot/joint_trajectory_publisher_parameters.hpp"
 
 namespace sorting_bot {
 
+using InverseKinBaseParams = joint_trajectory_publisher::Params::InverseKinBase;
+
 class InverseKinBase {
 public:
-  void initialize_model(std::shared_ptr<pinocchio::Model> model, std::shared_ptr<pinocchio::Data> data,
-                        int ee_frame_id);
+  void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,
+                  const int &ee_frame_id, InverseKinBaseParams &params);
+
+  void initialize(const std::shared_ptr<pinocchio::Model> &model, const std::shared_ptr<pinocchio::Data> &data,
+                  const int &ee_frame_id, const Eigen::Matrix<double, 6, 6> &error_weights,
+                  const double &convergence_threshold);
 
   void set_q_in_joint_limits(Eigen::VectorXd &q) const;
 
@@ -20,7 +27,8 @@ protected:
   int ee_frame_id_;
   int nq_;
 
-  double limit_margin = 0.01;
+  Eigen::Matrix<double, 6, 6> error_weights_; // square matrix with weights in the diagonal
+  double convergence_threshold_, limit_margin = 0.01;
 };
 
 } // namespace sorting_bot

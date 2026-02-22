@@ -183,15 +183,17 @@ joint_trajectory_publisher:
       type: double
       default_value: 0.1
       description: "norm precision threshold to decide if IK result is acceptable."
-  inverse_kin:
+  inverse_kin_base:
     convergence_threshold:
       type: double
       default_value: 0.01
       description: "Desired norm precision to consider that IK converged."
-    max_iter:
-      type: int
-      default_value: 10000
-      description: "Maximum number of iteration."
+    error_weights:
+      type: double_array
+      description: Weights for the error vector.
+      validation:
+        not_empty<>: []
+  inverse_kin:
     dt:
       type: double
       default_value: 0.1
@@ -200,29 +202,24 @@ joint_trajectory_publisher:
       type: double
       default_value: 0.000001
       description: "Dampener coefficient."
-    error_weights:
-      type: double_array
-      description: Weights for the error vector.
-      validation:
-        not_empty<>: []
+    max_iter:
+      type: int
+      default_value: 10000
+      description: "Maximum number of iteration."
   genetic_algo_inverse_kin:
     population_size:
       type: int
       default_value: 3000
       description: "Size of the population."
-    max_iter:
-      type: int
-      default_value: 10000
-      description: "Maximum number of iteration."
     nb_keep_ind:
       type: int
       default_value: 400
       description: "Number of individuals we keep for next iteration."
-    convergence_threshold:
-      type: double
-      default_value: 0.01
-      description: "Desired norm precision to consider that IK converged."
-    mutation_max_amplitude:
+    mutation_amplitude:
       type: double
       default_value: 0.1
-      description: "Max amplitude for the mutation."
+      description: "Amplitude for the mutation."
+    max_iter:
+      type: int
+      default_value: 10
+      description: "Maximum number of iteration while having the same best individual."

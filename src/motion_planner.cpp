@@ -26,10 +26,9 @@ void MotionPlanner::initialize(std::string urdf, joint_trajectory_publisher::Par
   nq_ = model_->nq;
   ee_frame_id_ = model_->getFrameId(ee_frame_name_);
   use_genetic_algo_ = params.use_genetic_algo;
-  genetic_algo_inverse_kin_.initialize_model(model_, data_, ee_frame_id_);
-  inverse_kin_.initialize_model(model_, data_, ee_frame_id_);
-  inverse_kin_.initialize(params.inverse_kin);
-  genetic_algo_inverse_kin_.initialize(params.genetic_algo_inverse_kin);
+  inverse_kin_.initialize(model_, data_, ee_frame_id_, params.inverse_kin_base, params.inverse_kin);
+  genetic_algo_inverse_kin_.initialize(model_, data_, ee_frame_id_, params.inverse_kin_base,
+                                       params.genetic_algo_inverse_kin);
   quintic_polynom_.set_motion_planning_time_coeff(params.motion_planning_time_coeff);
   min_precision_threshold_ = params.min_precision_threshold;
 }
@@ -46,7 +45,7 @@ MotionPlanner::get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
   if (pose_norm_err > min_precision_threshold_ && use_genetic_algo_) {
     RCLCPP_INFO(logger_, "IK wasn't precise enough, run genetic algorithm.");
     Individual best_individual = genetic_algo_inverse_kin_.run_gen_algo(des_in_base_M_gripper);
-    q_inv_kin = best_individual.q();
+    q_inv_kin = best_individual.get_q();
   } else
     q_inv_kin = std::get<0>(inv_kin_res);
 
@@ -54,7 +53,7 @@ MotionPlanner::get_inverse_kinematic_at_pose(const Eigen::VectorXd &q_init,
   if (pose_norm_err <= min_precision_threshold_)
     return q_inv_kin;
 
-  RCLCPP_WARN(logger_, "IK wasn't precise enough.");
+  RCLCPP_WARN(logger_, "IK Failed.");
   return std::nullopt;
 }
 
