@@ -226,13 +226,13 @@ void PlannerManager::update_nav_action(const rclcpp_action::ResultCode &nav_resu
     {
     case rclcpp_action::ResultCode::SUCCEEDED:
       base_waypoints_published_ = false;
-      last_nav_succeed = true;
+      last_nav_succeed_ = true;
       break;
     case rclcpp_action::ResultCode::UNKNOWN:
       break;
     default:
       base_waypoints_published_ = false;
-      last_nav_succeed = false;
+      last_nav_succeed_ = false;
       action_time_ = 0.;
       break;
     }
@@ -242,6 +242,8 @@ void PlannerManager::update_nav_action(const rclcpp_action::ResultCode &nav_resu
 void PlannerManager::set_base_waypoints_published(const bool &base_waypoints_published) {
   base_waypoints_published_ = base_waypoints_published;
 }
+
+bool PlannerManager::get_last_nav_succeed() const { return last_nav_succeed_; }
 
 bool PlannerManager::action_is_finished(const Action &action, const rclcpp_action::ResultCode &nav_result) const {
   if ((action.type == MOVE_GRIPPER) || (action.type == SEARCH_OBJECT) || (action.type == SEARCH_BOX) ||

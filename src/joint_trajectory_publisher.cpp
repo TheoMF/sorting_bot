@@ -199,16 +199,20 @@ void JointTrajectoryPublisher::send_joint_trajectory_msg(const Eigen::VectorXd &
 
 void JointTrajectoryPublisher::handle_nav_goal_publication() {
   if (!planner_manager_.base_waypoints_published()) {
-    std::vector<Eigen::VectorXd> base_poses = planner_manager_.get_base_waypoints();
+    std::vector<Eigen::VectorXd> base_waypoints = planner_manager_.get_base_waypoints();
     planner_manager_.set_base_waypoints_published(true);
-    if (last_sent_base_waypoints[0] == base_poses[0] && planner_manager_.last_nav_succeed)
+
+    // If there hasn't been any update for the base goal, don't start navigation.
+    if (last_sent_base_waypoints[0] == base_waypoints[0] && planner_manager_.get_last_nav_succeed())
       nav_result_ = rclcpp_action::ResultCode::SUCCEEDED;
+
+    // If we got a new goal start navigation.
     else {
-      for (Eigen::VectorXd &base_pose : base_poses)
-        RCLCPP_INFO(this->get_logger(), "publishing base waypoints x: %f y: %f yaw: %f", base_pose[0], base_pose[1],
-                    base_pose[2]);
-      last_sent_base_waypoints = base_poses;
-      publish_nav_goal(base_poses);
+      for (Eigen::VectorXd &base_waypoint : base_waypoints)
+        RCLCPP_INFO(this->get_logger(), "publishing base waypoints x: %f y: %f yaw: %f", base_waypoint[0],
+                    base_waypoint[1], base_waypoint[2]);
+      last_sent_base_waypoints = base_waypoints;
+      publish_nav_goal(base_waypoints);
     }
   }
 }

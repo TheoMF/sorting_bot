@@ -84,6 +84,8 @@ public:
 
   void set_base_waypoints_published(const bool &base_waypoints_published);
 
+  bool get_last_nav_succeed() const;
+
   bool action_is_finished(const Action &action, const rclcpp_action::ResultCode &nav_result) const;
 
   void do_action_first_time_in_steps();
@@ -121,8 +123,6 @@ public:
 
   StateMachine get_state() const;
 
-  bool last_nav_succeed = false;
-
 private:
   // ROS related attributes.
   rclcpp::Time ros_time_;
@@ -142,7 +142,7 @@ private:
   Eigen::VectorXd base_pose_ = Eigen::VectorXd::Zero(3);
   std::vector<Eigen::VectorXd> base_waypoint_vec_;
   int base_waypoint_vec_idx_ = 0;
-  bool base_waypoints_published_ = false;
+  bool base_waypoints_published_ = false, last_nav_succeed_ = false;
   double box_dist_while_placing_, search_box_y_dist_threshold_;
 
   // Motion planning related attributes.
